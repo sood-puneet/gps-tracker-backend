@@ -1,0 +1,286 @@
+===============================================================================
+ LocalTracker - Going Live (FREE, short-term) : Plan, Options & Presentation
+ Prepared: 2026-10-04          Scope: planning only - no code was changed
+===============================================================================
+
+CONTENTS
+  1. How the system works
+  2. The real problem (localhost, HTTP vs HTTPS)
+  3. Free hosting options compared
+  4. Recommended free plan (step by step)
+  5. Device (ESP32 + SIM) side - what to send and how
+  6. Minimum safety before going public
+  7. How to present to the team
+  8. Demo-day checklist
+  9. After the project ends
+ 10. Open decisions / things to verify
+
+-------------------------------------------------------------------------------
+1. HOW THE SYSTEM WORKS
+-------------------------------------------------------------------------------
+
+  NEO-6M GPS --UART (NMEA text)--> ESP32 --AT commands--> SIM module
+     --mobile data--> Internet --HTTP POST--> Server (Node + SQLite)
+                                                   |
+                                                   v
+                                Team opens the dashboard in a browser
+
+  - The NEO-6M does NOT send HTTP. It only outputs GPS sentences (NMEA) to
+    the ESP32 over serial.
+  - The ESP32 reads latitude / longitude / time and tells the SIM module
+    (via AT commands) to send an HTTP POST to the server.
+  - So the "HTTP only" limitation comes from the SIM MODULE, not the GPS.
+  - Server endpoint the device uses (unchanged):
+        POST /api/location
+        Body: {"latitude": 28.99254, "longitude": 77.99993, "time": "<optional ISO UTC>"}
+
+-------------------------------------------------------------------------------
+2. THE REAL PROBLEM
+-------------------------------------------------------------------------------
+
+  a) "localhost" is unreachable for the device.
+     The SIM module is on the mobile network; "localhost" exists only on
+     your PC. Today only console/demo coordinates work for that reason.
+     For the real device, the server must be reachable on the PUBLIC
+     internet - with or without HTTPS.
+
+  b) Hosting does NOT automatically force HTTPS.
+     - Your own VPS (virtual server with a public IP): YOU decide - plain
+       HTTP works fine.
+     - Platform hosts (Render, Railway, Koyeb, Heroku...): give an https://
+       link and usually REDIRECT http:// -> https://. A basic SIM module
+       cannot follow that redirect, so device requests fail.
+
+  c) Why HTTPS is hard for the device.
+     - SIM800L-class modules only support old SSL/TLS 1.0, which modern
+       servers reject.
+     - LTE modules (SIM7600, A7670...) support TLS 1.2 = real HTTPS.
+     - Note: SIM800L is 2G-only. Jio has no 2G; use an Airtel / Vi / BSNL SIM.
+
+  Decision for this project: the DEVICE sends plain HTTP to ONE endpoint;
+  PEOPLE (dashboard) use HTTPS where possible. This is a deliberate,
+  documented trade-off because of the hardware.
+
+-------------------------------------------------------------------------------
+3. FREE HOSTING OPTIONS COMPARED
+-------------------------------------------------------------------------------
+  (Free tiers change often - re-check terms before signing up.)
+
+  Option                          Device HTTP?  24/7?  Keeps DB?  Signup      Verdict
+  ------------------------------  ------------  -----  ---------  ----------  -----------------
+  A. Oracle Cloud "Always Free"   YES           YES    YES        Card verify BEST free option
+     VM (public IP)                                                (not charged)
+  B. Your laptop + free tunnel    Depends on    Only   YES        None/email  Good for a demo
+     (Cloudflare quick tunnel,    tunnel - TEST while                         day; laptop must
+     ngrok, Pinggy)               it (see 4B)   laptop on                     stay on
+  C. Your laptop on office Wi-Fi  NO (device    Only   YES        None        Dashboard demo
+     http://<laptop-IP>:3000      can't reach)  while on                      only (simulated data)
+  D. Google Cloud e2-micro free   YES           YES    YES        Card        Alternative to A;
+                                                                               check IP charges
+  E. Render / Koyeb free (PaaS)   NO (redirects NO -   NO (disk   Email       NOT suitable:
+                                  to HTTPS)     sleeps) wiped)                 sleeps + loses DB
+  F. Vercel / Netlify             NO            -      NO         -           NOT suitable
+
+  Also free if hardware allows (not needed short-term):
+  G. LTE module with TLS 1.2 (SIM7600/A7670) -> device can use HTTPS, then
+     PaaS options become possible.
+  H. TLS done on the ESP32 (TinyGSM + SSLClient libraries; the SIM module
+     carries raw TCP) -> HTTPS even with SIM800L. Free but complex and
+     memory-heavy. Not recommended for a short project.
+
+-------------------------------------------------------------------------------
+4. RECOMMENDED FREE PLAN (STEP BY STEP)
+-------------------------------------------------------------------------------
+
+  Use TWO things together:
+    - Plan A (Oracle Always Free VM)  -> real device + team access, 24/7
+    - Plan B (laptop + tunnel)        -> backup if Oracle signup fails
+    - Plus a SIMULATOR (section 7) as the demo fallback
+
+  ---------------------------------------------------------------
+  4A. Oracle Cloud Always Free VM  (primary)
+  ---------------------------------------------------------------
+   1. Sign up at cloud.oracle.com (Always Free). Card is for verification.
+      Pick a home region close to India (e.g. Mumbai/Hyderabad).
+      If "out of capacity", try the other region or the AMD micro shape.
+   2. Create a VM: Ubuntu 22.04/24.04, "Always Free eligible" shape.
+      Save the SSH key. Note the PUBLIC IP.
+   3. Open ports:
+        - Oracle console: VCN > Security List > add ingress TCP 80 and 443
+          (and 3000 only if you skip step 6).
+        - On the VM: Oracle Ubuntu images block ports with iptables;
+          allow 80/443 (e.g. sudo iptables -I INPUT -p tcp --dport 80 -j ACCEPT,
+          same for 443, then save with netfilter-persistent).
+   4. Install Node.js 22.13+ (project needs built-in SQLite; you use 24.x).
+   5. Copy the project (WITHOUT node_modules / tracker.db), then:
+          npm install
+          npm start             (test on http://<PUBLIC-IP>:3000)
+      Keep it running after logout: use pm2 (npm i -g pm2;
+      pm2 start server.js --name tracker; pm2 save; pm2 startup)
+      or a systemd service.
+   6. (Recommended) Free domain + free HTTPS for the dashboard:
+        - Free subdomain from DuckDNS (e.g. mytracker.duckdns.org) -> point
+          it to the VM public IP.
+        - Install Caddy (free web server, gets Let's Encrypt certificates
+          automatically). Caddyfile idea:
+
+            mytracker.duckdns.org {
+                reverse_proxy localhost:3000
+            }
+            http://mytracker.duckdns.org {
+                @device path /api/location
+                handle @device {
+                    reverse_proxy localhost:3000
+                }
+                handle {
+                    redir https://{host}{uri} permanent
+                }
+            }
+
+          Result:
+            Device -> http://mytracker.duckdns.org/api/location  (plain HTTP, no redirect)
+            Team   -> https://mytracker.duckdns.org              (secure dashboard)
+          (Verify after setup with the curl tests in 4C.)
+        - No domain? Then use http://<PUBLIC-IP> for both (fine for an
+          internal short-term demo, but say so in the presentation).
+   7. Backups: copy tracker.db (+ -wal/-shm, or stop the server first) with
+      scp now and then.
+
+  ---------------------------------------------------------------
+  4B. Laptop + free tunnel  (backup / zero-hosting)
+  ---------------------------------------------------------------
+   1. npm start on the laptop (laptop must stay on and online).
+   2. Start a tunnel, e.g.:
+        - Cloudflare quick tunnel: cloudflared tunnel --url http://localhost:3000
+        - ngrok:                   ngrok http 3000
+        - Pinggy:                  ssh -p 443 -R0:localhost:3000 a.pinggy.io
+   3. Tunnels mostly give https:// links. Whether PLAIN http:// works without
+      a redirect differs per service and plan -> MUST TEST (4C) before relying
+      on it for the SIM device. Free URLs often change on every restart, so
+      the device URL would need updating.
+   4. Use for the presentation day only.
+
+  ---------------------------------------------------------------
+  4C. Test that plain HTTP works (from outside your network)
+  ---------------------------------------------------------------
+     curl -v -X POST http://<HOST>/api/location ^
+          -H "Content-Type: application/json" ^
+          -d "{\"latitude\":28.99,\"longitude\":77.29}"
+
+     PASS = "HTTP/1.1 200" and {"ok":true}
+     FAIL = 301/302/308 redirect, or connection refused.
+     Test from a phone hotspot too (closest to the SIM module's path).
+
+-------------------------------------------------------------------------------
+5. DEVICE (ESP32 + SIM) SIDE - SUGGESTIONS
+-------------------------------------------------------------------------------
+
+  - Send only VALID fixes: with TinyGPS++, send only if
+    gps.location.isValid() and the fix is fresh; never send 0,0
+    (server does not filter this yet - issue #7).
+  - Send time as ISO UTC from the GPS, e.g. "2026-10-04T10:22:39Z",
+    or omit "time" and the server uses its own clock. Pick one and stay
+    consistent (issue #10).
+  - Interval: every 5-10 s is plenty for a demo and saves SIM data.
+  - Use port 80 (some mobile networks block unusual ports like 3000).
+  - Typical SIM800L HTTP POST AT sequence (APN depends on operator,
+    e.g. "airtelgprs.com"):
+        AT+SAPBR=3,1,"Contype","GPRS"
+        AT+SAPBR=3,1,"APN","<your-apn>"
+        AT+SAPBR=1,1
+        AT+HTTPINIT
+        AT+HTTPPARA="CID",1
+        AT+HTTPPARA="URL","http://<HOST>/api/location"
+        AT+HTTPPARA="CONTENT","application/json"
+        AT+HTTPDATA=<json-length>,10000
+        {"latitude":..,"longitude":..,"time":".."}
+        AT+HTTPACTION=1        -> expect +HTTPACTION: 1,200,...
+        AT+HTTPTERM
+    (No https:// in the URL; the module cannot follow redirects.)
+  - If the network drops, buffer a few points and send later (note: the
+    server stores points in arrival order - issue #8).
+
+-------------------------------------------------------------------------------
+6. MINIMUM SAFETY BEFORE GOING PUBLIC  (strongly recommended, still free)
+-------------------------------------------------------------------------------
+
+  Once the server is on the internet, issues #1 and #2 become real:
+  anyone could post fake points or DELETE all history.
+
+  Minimum (small changes - only if you approve them later):
+    1. API key: device sends a header/field with a secret; server rejects
+       POSTs without it.
+    2. Protect DELETE / geofence changes (simple password or key).
+    3. Restrict CORS to your own domain.
+    4. Keep the URL private to the team; delete the VM after the project.
+  For a few-days demo with test data, risk is low but not zero.
+
+-------------------------------------------------------------------------------
+7. HOW TO PRESENT TO THE TEAM  (15-20 minutes)
+-------------------------------------------------------------------------------
+
+  Agenda
+   1. Problem & goal (1 slide): live tracking, geofence alerts, trip history.
+   2. Architecture (diagram from section 1). Mark which links are HTTP and
+      which are HTTPS.
+   3. Hardware constraint & decision (1 slide):
+        "SIM module supports only old TLS -> device uses plain HTTP to one
+         endpoint; dashboard uses HTTPS; upgrade path = LTE module (TLS 1.2)."
+      Showing it as a deliberate decision builds confidence.
+   4. Live dashboard demo:
+        - Live tracking: follow, telemetry, track log
+        - Draw a geofence -> trigger a breach alert
+        - History menu -> open a saved day
+        - Replay at 1x / 4x; dark mode; phone layout
+   5. Device demo: real ESP32 posting to the hosted server; show the serial
+      monitor next to the dashboard so each point is seen arriving.
+   6. Roadmap: API key/login, GPS filtering (#7), ordering (#8),
+      server-side SMS/email alerts (#9), LTE/TLS module.
+   7. Q&A.
+
+  Demo tips
+   - ALWAYS have a fallback: GPS indoors often gets no fix and mobile data
+     can drop. Record a real drive beforehand and replay it with a small
+     SIMULATOR script that POSTs one point every 2 s. It looks exactly like
+     live tracking and is far more convincing than console.log coordinates.
+     (Can be added on request - a tiny standalone script, no project change.)
+   - Prepare the evening before: draw the geofence so the route crosses it;
+     have at least one saved day in History.
+   - Team on the same Wi-Fi, no hosting: npm start on the laptop, teammates
+     open http://<laptop-IP>:3000 (allow port 3000 in Windows Firewall).
+     Works for the dashboard demo, not for the SIM device.
+
+-------------------------------------------------------------------------------
+8. DEMO-DAY CHECKLIST
+-------------------------------------------------------------------------------
+
+  [ ] Server running (pm2 status) and reachable from a phone on mobile data
+  [ ] curl test from 4C passes (200, no redirect)
+  [ ] ESP32 + SIM: SIM has data balance, correct APN, antenna attached
+  [ ] GPS fix obtained outdoors before the meeting (cold start can take minutes)
+  [ ] Simulator script + recorded route ready as fallback
+  [ ] Geofence drawn; a saved day available in History
+  [ ] Dashboard opened in advance on the presenting laptop; dark/light chosen
+  [ ] Backup of tracker.db taken
+  [ ] Slides: architecture, HTTP/HTTPS decision, roadmap
+
+-------------------------------------------------------------------------------
+9. AFTER THE PROJECT ENDS
+-------------------------------------------------------------------------------
+
+  - Download tracker.db (history) if you want to keep it.
+  - Stop pm2 / delete the VM so nothing stays exposed.
+  - Remove the DuckDNS subdomain; rotate any API key used.
+
+-------------------------------------------------------------------------------
+10. OPEN DECISIONS / VERIFY
+-------------------------------------------------------------------------------
+
+  [ ] Which SIM module exactly? (SIM800L = HTTP only; SIM7600/A7670 = HTTPS ok)
+  [ ] Oracle signup succeeds? If not -> Google e2-micro or tunnel (4B)
+  [ ] Domain: DuckDNS + HTTPS, or plain public IP over HTTP?
+  [ ] Add API key protection before going public? (recommended)
+  [ ] Want the route SIMULATOR script for the demo?
+  [ ] Free-tier terms re-checked on signup day (they change often)
+
+===============================================================================
