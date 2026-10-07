@@ -1,0 +1,3645 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LocalTracker · Live Asset Monitor</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232563eb'/%3E%3Cpath d='M16 6l7 19-7-4-7 4z' fill='white'/%3E%3C/svg%3E">
+
+  <!-- Apply saved theme before first paint (avoids a light/dark flash) -->
+  <script>
+    try { var t = localStorage.getItem('lt-theme'); if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t); } catch (e) {}
+  </script>
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Leaflet (pinned) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- Leaflet Draw (pinned) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
+  <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+
+  <!-- Turf.js (pinned) -->
+  <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6.5.0/turf.min.js"></script>
+
+  <style>
+    /* =========================================================
+       Design tokens
+       ========================================================= */
+    :root {
+      --font: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      --mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Consolas, monospace;
+      --header-h: 60px;
+      --sidebar-w: 360px;
+      --radius-sm: 6px;
+      --radius: 10px;
+      --radius-lg: 14px;
+
+      --bg: #f4f6f9;
+      --surface: #ffffff;
+      --surface-2: #f8fafc;
+      --surface-3: #f1f5f9;
+      --border: #e4e7ec;
+      --border-strong: #d0d5dd;
+      --text: #0f172a;
+      --text-2: #334155;
+      --muted: #64748b;
+      --faint: #94a3b8;
+
+      --accent: #2563eb;
+      --accent-hover: #1d4ed8;
+      --accent-soft: #eff6ff;
+      --accent-border: #bfdbfe;
+      --accent-text: #1d4ed8;
+      --success: #059669;
+      --success-soft: #ecfdf5;
+      --success-border: #a7f3d0;
+      --warning: #d97706;
+      --warning-soft: #fffbeb;
+      --warning-border: #fde68a;
+      --danger: #dc2626;
+      --danger-hover: #b91c1c;
+      --danger-soft: #fef2f2;
+      --danger-border: #fecaca;
+
+      --overlay: rgba(255, 255, 255, 0.94);
+      --backdrop: rgba(15, 23, 42, 0.45);
+      --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
+      --shadow: 0 4px 12px rgba(16, 24, 40, 0.08), 0 1px 3px rgba(16, 24, 40, 0.06);
+      --shadow-lg: 0 18px 40px rgba(16, 24, 40, 0.16), 0 2px 6px rgba(16, 24, 40, 0.06);
+
+      --route: #2563eb;
+      --route-glow: #93c5fd;
+      --route-flow: #ffffff;
+      --point-stroke: #1e293b;
+      --point-fill: #ffffff;
+      --zone: #2563eb;
+      --tip-bg: #0f172a;
+      --tip-text: #f8fafc;
+      --track: #e2e8f0;
+      color-scheme: light;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --bg: #0a0f1a;
+        --surface: #111827;
+        --surface-2: #0f172a;
+        --surface-3: #1a2333;
+        --border: #1f2a3c;
+        --border-strong: #2c3a50;
+        --text: #e5e7eb;
+        --text-2: #cbd5e1;
+        --muted: #94a3b8;
+        --faint: #64748b;
+        --accent: #3b82f6;
+        --accent-hover: #60a5fa;
+        --accent-soft: rgba(59, 130, 246, 0.14);
+        --accent-border: rgba(59, 130, 246, 0.45);
+        --accent-text: #93c5fd;
+        --success: #10b981;
+        --success-soft: rgba(16, 185, 129, 0.14);
+        --success-border: rgba(16, 185, 129, 0.4);
+        --warning: #f59e0b;
+        --warning-soft: rgba(245, 158, 11, 0.14);
+        --warning-border: rgba(245, 158, 11, 0.4);
+        --danger: #ef4444;
+        --danger-hover: #f87171;
+        --danger-soft: rgba(239, 68, 68, 0.14);
+        --danger-border: rgba(239, 68, 68, 0.45);
+        --overlay: rgba(17, 24, 39, 0.92);
+        --backdrop: rgba(2, 6, 23, 0.65);
+        --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+        --shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+        --shadow-lg: 0 18px 44px rgba(0, 0, 0, 0.6);
+        --route: #60a5fa;
+        --route-glow: #1d4ed8;
+        --route-flow: #dbeafe;
+        --point-stroke: #e2e8f0;
+        --point-fill: #0f172a;
+        --zone: #60a5fa;
+        --tip-bg: #f8fafc;
+        --tip-text: #0f172a;
+        --track: #263247;
+        color-scheme: dark;
+      }
+    }
+    :root[data-theme="dark"] {
+      --bg: #0a0f1a;
+      --surface: #111827;
+      --surface-2: #0f172a;
+      --surface-3: #1a2333;
+      --border: #1f2a3c;
+      --border-strong: #2c3a50;
+      --text: #e5e7eb;
+      --text-2: #cbd5e1;
+      --muted: #94a3b8;
+      --faint: #64748b;
+      --accent: #3b82f6;
+      --accent-hover: #60a5fa;
+      --accent-soft: rgba(59, 130, 246, 0.14);
+      --accent-border: rgba(59, 130, 246, 0.45);
+      --accent-text: #93c5fd;
+      --success: #10b981;
+      --success-soft: rgba(16, 185, 129, 0.14);
+      --success-border: rgba(16, 185, 129, 0.4);
+      --warning: #f59e0b;
+      --warning-soft: rgba(245, 158, 11, 0.14);
+      --warning-border: rgba(245, 158, 11, 0.4);
+      --danger: #ef4444;
+      --danger-hover: #f87171;
+      --danger-soft: rgba(239, 68, 68, 0.14);
+      --danger-border: rgba(239, 68, 68, 0.45);
+      --overlay: rgba(17, 24, 39, 0.92);
+      --backdrop: rgba(2, 6, 23, 0.65);
+      --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+      --shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+      --shadow-lg: 0 18px 44px rgba(0, 0, 0, 0.6);
+      --route: #60a5fa;
+      --route-glow: #1d4ed8;
+      --route-flow: #dbeafe;
+      --point-stroke: #e2e8f0;
+      --point-fill: #0f172a;
+      --zone: #60a5fa;
+      --tip-bg: #f8fafc;
+      --tip-text: #0f172a;
+      --track: #263247;
+      color-scheme: dark;
+    }
+
+    /* =========================================================
+       Base
+       ========================================================= */
+    *, *::before, *::after { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    html, body {
+      height: 100%; margin: 0;
+      font-family: var(--font); font-size: 14px; line-height: 1.4;
+      background: var(--bg); color: var(--text);
+      -webkit-font-smoothing: antialiased;
+    }
+    body { display: flex; flex-direction: column; overflow: hidden; }
+    button { font-family: inherit; }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+    .icon {
+      width: 16px; height: 16px; flex-shrink: 0;
+      fill: none; stroke: currentColor; stroke-width: 2;
+      stroke-linecap: round; stroke-linejoin: round;
+    }
+
+    /* =========================================================
+       Header
+       ========================================================= */
+    .app-header {
+      height: var(--header-h); flex-shrink: 0;
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      padding: 0 20px; background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      position: relative; z-index: 1100;
+    }
+    .header-left { display: flex; align-items: center; min-width: 0; }
+    .brand { display: flex; align-items: center; gap: 11px; }
+    .brand-mark {
+      width: 34px; height: 34px; border-radius: 9px; flex-shrink: 0;
+      display: grid; place-items: center; color: #fff;
+      background: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%);
+      box-shadow: 0 2px 6px rgba(37, 99, 235, 0.35);
+    }
+    .brand-mark .icon { width: 18px; height: 18px; fill: #fff; stroke: #fff; stroke-width: 1.5; }
+    .brand-text { display: flex; flex-direction: column; line-height: 1.15; }
+    .brand-text strong { font-size: 15px; font-weight: 700; letter-spacing: -0.015em; }
+    .brand-text span { font-size: 11.5px; color: var(--muted); font-weight: 500; }
+
+    .status-group {
+      display: flex; align-items: center; gap: 8px;
+      margin-left: 18px; padding-left: 18px; border-left: 1px solid var(--border);
+    }
+    .pill {
+      display: inline-flex; align-items: center; gap: 7px; height: 26px; padding: 0 10px;
+      border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap;
+      border: 1px solid var(--border); background: var(--surface-3); color: var(--muted);
+    }
+    .pill .icon { width: 13px; height: 13px; }
+    .pill .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; position: relative; }
+    .pill.live { color: var(--success); background: var(--success-soft); border-color: var(--success-border); }
+    .pill.live .dot::after {
+      content: ''; position: absolute; inset: -4px; border-radius: 50%;
+      border: 2px solid currentColor; opacity: 0; animation: ping 1.8s ease-out infinite;
+    }
+    .pill.offline { color: var(--danger); background: var(--danger-soft); border-color: var(--danger-border); }
+    .pill.paused { color: var(--warning); background: var(--warning-soft); border-color: var(--warning-border); }
+    .pill.inside { color: var(--success); background: var(--success-soft); border-color: var(--success-border); }
+    .pill.outside { color: var(--danger); background: var(--danger-soft); border-color: var(--danger-border); }
+    @keyframes ping { 0% { transform: scale(0.6); opacity: 0.8; } 100% { transform: scale(1.8); opacity: 0; } }
+
+    .last-fix {
+      display: inline-flex; align-items: center; gap: 5px;
+      font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap;
+    }
+    .last-fix .icon { width: 13px; height: 13px; }
+    .last-fix.stale { color: var(--warning); }
+
+    .hdr-actions { display: flex; align-items: center; gap: 8px; }
+    .hdr-divider { width: 1px; height: 24px; background: var(--border); margin: 0 2px; }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+      height: 36px; padding: 0 12px; border-radius: 8px;
+      border: 1px solid var(--border-strong); background: var(--surface); color: var(--text-2);
+      font-size: 13px; font-weight: 500; line-height: 1; white-space: nowrap; cursor: pointer;
+      box-shadow: var(--shadow-sm);
+      transition: background-color .15s, border-color .15s, color .15s, box-shadow .15s;
+    }
+    .btn:hover { background: var(--surface-3); color: var(--text); }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+    .btn .chev { width: 14px; height: 14px; color: var(--muted); margin-left: -2px; }
+    .icon-btn { width: 36px; padding: 0; }
+    .btn-sm { height: 30px; padding: 0 10px; font-size: 12.5px; border-radius: 7px; }
+    .btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); color: #fff; }
+    .btn-danger { color: var(--danger); border-color: var(--danger-border); }
+    .btn-danger:hover { background: var(--danger-soft); color: var(--danger); }
+    .btn-danger-solid { background: var(--danger); border-color: var(--danger); color: #fff; }
+    .btn-danger-solid:hover { background: var(--danger-hover); border-color: var(--danger-hover); color: #fff; }
+    .btn-ghost { background: transparent; border-color: transparent; box-shadow: none; }
+
+    /* Segmented toggle */
+    .seg {
+      display: inline-flex; gap: 2px; padding: 3px;
+      background: var(--surface-3); border: 1px solid var(--border); border-radius: 9px;
+    }
+    .seg-btn {
+      display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px;
+      border: 0; border-radius: 6px; background: transparent; color: var(--muted);
+      font-size: 13px; font-weight: 500; cursor: pointer; white-space: nowrap;
+      transition: background-color .15s, color .15s, box-shadow .15s;
+    }
+    .seg-btn:hover { color: var(--text); }
+    .seg-btn.active { background: var(--surface); color: var(--accent-text); box-shadow: var(--shadow-sm); font-weight: 600; }
+
+    /* Select */
+    .select-wrap { position: relative; display: inline-flex; align-items: center; }
+    .select-wrap select {
+      appearance: none; -webkit-appearance: none;
+      height: 36px; padding: 0 30px 0 33px; border-radius: 8px;
+      border: 1px solid var(--border-strong); background: var(--surface); color: var(--text-2);
+      font: 500 13px var(--font); cursor: pointer; box-shadow: var(--shadow-sm);
+    }
+    .select-wrap select:hover { background: var(--surface-3); }
+    .select-wrap .lead, .select-wrap .trail { position: absolute; pointer-events: none; color: var(--muted); }
+    .select-wrap .lead { left: 11px; }
+    .select-wrap .trail { right: 10px; width: 14px; height: 14px; }
+
+    /* Menus */
+    .menu-wrap, .layers-wrap { position: relative; }
+    .menu, .layers-pop {
+      position: absolute; display: none; min-width: 220px; padding: 6px;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+      box-shadow: var(--shadow-lg); z-index: 1300;
+    }
+    .menu { top: calc(100% + 6px); right: 0; }
+    .menu.open, .layers-pop.open { display: block; animation: pop-in .12s ease-out; }
+    @keyframes pop-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+    .menu-title { padding: 6px 10px 6px; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); }
+    .menu-item {
+      display: flex; align-items: flex-start; gap: 10px; width: 100%;
+      padding: 9px 10px; border: 0; border-radius: 7px; background: none;
+      color: var(--text-2); font-size: 13px; font-weight: 500; text-align: left; cursor: pointer;
+    }
+    .menu-item .icon { margin-top: 1px; color: var(--muted); }
+    .menu-item:hover:not(:disabled) { background: var(--surface-3); color: var(--text); }
+    .menu-item:disabled { opacity: .45; cursor: not-allowed; }
+    .menu-item small { display: block; margin-top: 2px; font-size: 12px; font-weight: 400; color: var(--muted); }
+    .menu-item.danger, .menu-item.danger .icon { color: var(--danger); }
+    .menu-item.danger:hover:not(:disabled) { background: var(--danger-soft); }
+    .menu-item .check { margin-left: auto; visibility: hidden; color: var(--accent); }
+    .menu-item.selected .check { visibility: visible; }
+    .menu-item.selected { color: var(--text); }
+    .menu-sep { height: 1px; margin: 6px 4px; background: var(--border); }
+
+    .mobile-only { display: none !important; }
+
+    /* =========================================================
+       Layout
+       ========================================================= */
+    .main { flex: 1; min-height: 0; display: flex; position: relative; overflow: hidden; }
+    .map-wrap { flex: 1; min-width: 0; position: relative; }
+    #map { position: absolute; inset: 0; z-index: 0; background: var(--surface-3); }
+
+    /* =========================================================
+       Telemetry panel
+       ========================================================= */
+    .stats-panel {
+      position: absolute; top: 16px; left: 16px; z-index: 20; width: 304px;
+      background: var(--overlay); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow);
+    }
+    .stats-head {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      padding: 10px 8px 10px 14px; border-bottom: 1px solid var(--border);
+    }
+    .stats-panel.collapsed .stats-head { border-bottom: 0; }
+    .stats-title {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 11.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted);
+    }
+    .stats-title .icon { width: 14px; height: 14px; }
+    .mode-tag {
+      font-size: 10px; font-weight: 700; letter-spacing: .05em; padding: 2px 6px; border-radius: 4px;
+      background: var(--success-soft); color: var(--success);
+    }
+    .mode-tag.history { background: var(--warning-soft); color: var(--warning); }
+    .mode-tag.replay { background: var(--accent-soft); color: var(--accent-text); }
+    .stats-summary { margin-left: auto; font-size: 12.5px; font-weight: 600; color: var(--text-2); font-variant-numeric: tabular-nums; display: none; }
+    .stats-panel.collapsed .stats-summary { display: block; }
+    .stats-panel.collapsed .stats-grid { display: none; }
+    .stats-panel.collapsed .collapse-btn .icon { transform: rotate(180deg); }
+    .collapse-btn {
+      width: 28px; height: 28px; display: grid; place-items: center; flex-shrink: 0;
+      border: 0; border-radius: 6px; background: none; color: var(--muted); cursor: pointer;
+    }
+    .collapse-btn:hover { background: var(--surface-3); color: var(--text); }
+    .collapse-btn .icon { transition: transform .2s; }
+
+    .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 12px; }
+    .tile { padding: 10px 11px; border-radius: 9px; background: var(--surface-2); border: 1px solid var(--border); min-width: 0; }
+    .tile.wide { grid-column: span 2; }
+    .tile-label {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 10.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--muted);
+    }
+    .tile-label .icon { width: 13px; height: 13px; }
+    .tile-value {
+      margin-top: 5px; font-size: 18px; font-weight: 700; letter-spacing: -0.01em;
+      color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .tile-value small { margin-left: 3px; font-size: 12px; font-weight: 500; color: var(--muted); }
+    .tile-sub { margin-top: 2px; font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .tile-speed { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; }
+    .tile-speed .tile-value { font-size: 30px; line-height: 1.05; }
+    .speed-state {
+      display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: 999px;
+      font-size: 11.5px; font-weight: 600; margin-bottom: 3px;
+    }
+    .speed-state::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+    .tile-heading { display: flex; align-items: center; gap: 8px; }
+    .compass {
+      width: 26px; height: 26px; border-radius: 50%; flex-shrink: 0; display: grid; place-items: center;
+      border: 1px solid var(--border-strong); background: var(--surface); color: var(--accent);
+    }
+    .compass .icon { width: 13px; height: 13px; transition: transform .4s ease; }
+    .tile-pos { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .tile-pos .tile-value { font-family: var(--mono); font-size: 13px; font-weight: 600; letter-spacing: 0; }
+    .copy-btn {
+      width: 30px; height: 30px; flex-shrink: 0; display: grid; place-items: center;
+      border: 1px solid var(--border); border-radius: 7px; background: var(--surface); color: var(--muted); cursor: pointer;
+    }
+    .copy-btn:hover:not(:disabled) { color: var(--accent); border-color: var(--accent-border); }
+    .copy-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+    /* Speed colour scale (shared by tile + cards) */
+    .s-stopped { background: var(--surface-3); color: var(--muted); }
+    .s-slow { background: var(--warning-soft); color: var(--warning); }
+    .s-moving { background: var(--success-soft); color: var(--success); }
+    .s-fast { background: var(--accent-soft); color: var(--accent-text); }
+
+    /* =========================================================
+       Map controls (custom Leaflet control)
+       ========================================================= */
+    .map-ctrl { position: absolute; top: 16px; right: 16px; z-index: 22; display: flex; flex-direction: column; gap: 8px; }
+    .ctrl-group {
+      display: flex; flex-direction: column; position: relative;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow);
+    }
+    .ctrl-btn {
+      width: 38px; height: 38px; display: grid; place-items: center;
+      border: 0; background: none; color: var(--text-2); cursor: pointer;
+    }
+    .ctrl-btn .icon { width: 17px; height: 17px; }
+    .ctrl-btn + .ctrl-btn { border-top: 1px solid var(--border); }
+    .ctrl-btn:first-child { border-radius: 9px 9px 0 0; }
+    .ctrl-btn:last-child { border-radius: 0 0 9px 9px; }
+    .ctrl-btn:only-child { border-radius: 9px; }
+    .ctrl-btn:hover { background: var(--surface-3); color: var(--text); }
+    .ctrl-btn.attention { color: var(--accent); }
+    .ctrl-btn.attention::after {
+      content: ''; position: absolute; top: 7px; right: 7px; width: 7px; height: 7px; border-radius: 50%;
+      background: var(--accent); box-shadow: 0 0 0 2px var(--surface);
+    }
+    .layers-pop { top: 0; right: calc(100% + 8px); }
+
+    /* =========================================================
+       Banners (draw / edit / breach)
+       ========================================================= */
+    .banner-stack {
+      position: absolute; left: 50%; bottom: 28px; transform: translateX(-50%); z-index: 25;
+      display: flex; flex-direction: column; align-items: center; gap: 8px;
+      width: max-content; max-width: calc(100% - 32px);
+    }
+    .banner {
+      display: flex; align-items: center; gap: 12px; width: 100%; max-width: 560px;
+      padding: 10px 10px 10px 12px; border-radius: 12px;
+      background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow-lg);
+      animation: banner-in .2s ease-out;
+    }
+    @keyframes banner-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+    .banner-icon {
+      width: 34px; height: 34px; flex-shrink: 0; border-radius: 9px; display: grid; place-items: center;
+      background: var(--accent-soft); color: var(--accent);
+    }
+    .banner-icon .icon { width: 18px; height: 18px; }
+    .banner-text { display: flex; flex-direction: column; min-width: 0; font-size: 12.5px; color: var(--muted); }
+    .banner-text strong { font-size: 13.5px; color: var(--text); font-weight: 600; }
+    .banner-actions { display: flex; align-items: center; gap: 6px; margin-left: auto; padding-left: 8px; flex-shrink: 0; }
+    .banner.danger { background: var(--danger); border-color: transparent; color: #fff; }
+    .banner.danger .banner-icon { background: rgba(255, 255, 255, 0.18); color: #fff; }
+    .banner.danger .banner-text, .banner.danger .banner-text strong { color: #fff; }
+    .banner.danger .banner-text span { opacity: .9; }
+    .btn-on-danger { background: #fff; border-color: #fff; color: #b91c1c; box-shadow: none; }
+    .btn-on-danger:hover { background: #fee2e2; color: #991b1b; }
+    .icon-btn-sm {
+      width: 30px; height: 30px; display: grid; place-items: center; flex-shrink: 0;
+      border: 0; border-radius: 7px; background: transparent; color: inherit; cursor: pointer; opacity: .85;
+    }
+    .icon-btn-sm:hover { opacity: 1; background: rgba(255, 255, 255, 0.16); }
+
+    /* =========================================================
+       Sidebar
+       ========================================================= */
+    .sidebar-toggle {
+      position: absolute; right: 0; top: 50%; transform: translateY(-50%); z-index: 20;
+      width: 22px; height: 56px; display: grid; place-items: center; padding: 0;
+      background: var(--surface); color: var(--muted); cursor: pointer;
+      border: 1px solid var(--border); border-right: 0; border-radius: 9px 0 0 9px;
+      box-shadow: -3px 0 10px rgba(16, 24, 40, 0.06);
+    }
+    .sidebar-toggle:hover { color: var(--accent); }
+    .sidebar-toggle .icon { width: 15px; height: 15px; }
+
+    .sidebar {
+      width: var(--sidebar-w); flex-shrink: 0; min-height: 0;
+      display: flex; flex-direction: column; z-index: 30;
+      background: var(--surface); border-left: 1px solid var(--border);
+      transition: margin-right .3s ease;
+    }
+    .sidebar.collapsed { margin-right: calc(-1 * var(--sidebar-w)); }
+    .sidebar-head {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      padding: 14px 16px; border-bottom: 1px solid var(--border);
+    }
+    .sidebar-title { display: flex; align-items: center; gap: 9px; font-size: 14px; font-weight: 600; }
+    .sidebar-title .icon { color: var(--muted); }
+    .count-pill {
+      font-size: 12px; font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap;
+      padding: 3px 9px; border-radius: 999px; background: var(--surface-3); border: 1px solid var(--border);
+    }
+    .sidebar-head-actions { display: flex; align-items: center; gap: 8px; }
+    .btn.is-active { background: var(--accent-soft); color: var(--accent-text); border-color: var(--accent-border); }
+    .btn.is-active .chev { color: var(--accent-text); }
+    .day-menu { width: 290px; }
+    .day-list { max-height: 320px; overflow-y: auto; }
+    .menu-note { padding: 10px; font-size: 12.5px; color: var(--muted); }
+
+    .timeline { padding: 14px 16px 16px; border-bottom: 1px solid var(--border); background: var(--surface-2); }
+    .tl-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+    .tl-label {
+      display: flex; align-items: center; gap: 7px;
+      font-size: 11.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted);
+    }
+    .tl-label .icon { width: 14px; height: 14px; }
+    .badge {
+      display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 999px;
+      font-size: 11px; font-weight: 700; letter-spacing: .04em;
+    }
+    .badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+    .badge.live { background: var(--success-soft); color: var(--success); }
+    .badge.history { background: var(--warning-soft); color: var(--warning); }
+    .badge.replay { background: var(--accent-soft); color: var(--accent-text); }
+    .badge.replay.playing::before { animation: blink 1s ease-in-out infinite alternate; }
+    @keyframes blink { from { opacity: 1; } to { opacity: .25; } }
+
+    .range {
+      -webkit-appearance: none; appearance: none; display: block;
+      width: 100%; height: 6px; margin: 0; border-radius: 999px; outline-offset: 6px; cursor: pointer;
+      background: linear-gradient(to right, var(--accent) 0%, var(--accent) var(--pct, 100%), var(--track) var(--pct, 100%), var(--track) 100%);
+    }
+    .range::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%;
+      background: var(--surface); border: 2px solid var(--accent); box-shadow: var(--shadow); cursor: grab;
+    }
+    .range::-moz-range-thumb {
+      width: 14px; height: 14px; border-radius: 50%;
+      background: var(--surface); border: 2px solid var(--accent); box-shadow: var(--shadow); cursor: grab;
+    }
+    .range::-moz-range-track { background: transparent; }
+    .range:disabled { opacity: .5; cursor: not-allowed; }
+
+    .tl-readout {
+      display: flex; justify-content: space-between; margin-top: 9px;
+      font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums;
+    }
+    .tl-readout strong { color: var(--text-2); font-weight: 600; }
+    .tl-controls { display: flex; align-items: center; gap: 6px; margin-top: 12px; }
+    .tl-btn {
+      width: 32px; height: 32px; display: grid; place-items: center; padding: 0;
+      border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface); color: var(--text-2);
+      cursor: pointer; box-shadow: var(--shadow-sm);
+    }
+    .tl-btn:hover:not(:disabled) { background: var(--surface-3); color: var(--text); }
+    .tl-btn:disabled { opacity: .45; cursor: not-allowed; }
+    .tl-btn.play { width: 38px; background: var(--accent); border-color: var(--accent); color: #fff; }
+    .tl-btn.play:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); color: #fff; }
+    .tl-btn.play .icon { fill: currentColor; width: 14px; height: 14px; }
+    .tl-controls .btn { margin-left: auto; }
+    .tl-speed { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 12px; }
+    .tl-speed-label { display: flex; flex-direction: column; font-size: 12px; font-weight: 600; color: var(--text-2); line-height: 1.25; }
+    .tl-speed-label span { font-size: 11.5px; font-weight: 500; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .seg-sm { padding: 2px; border-radius: 8px; }
+    .seg-sm .seg-btn { height: 26px; padding: 0 9px; font-size: 12px; font-variant-numeric: tabular-nums; }
+
+    .list { flex: 1; min-height: 0; overflow-y: auto; position: relative; background: var(--bg); }
+    .virtual-scroller { position: relative; width: 100%; }
+    .data-card {
+      position: absolute; left: 12px; right: 12px; height: 72px;
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 0 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+      cursor: pointer; transition: border-color .12s, box-shadow .12s, opacity .12s;
+    }
+    .data-card:hover { border-color: var(--accent-border); box-shadow: var(--shadow); }
+    .data-card.selected { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+    .data-card.future { opacity: .45; }
+    .card-main { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+    .card-top { display: flex; align-items: center; gap: 8px; }
+    .card-idx {
+      font-size: 11px; font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums;
+      padding: 2px 6px; border-radius: 5px; background: var(--surface-3);
+    }
+    .card-time { font-size: 14px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+    .latest-tag {
+      font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+      color: var(--success); background: var(--success-soft); padding: 2px 6px; border-radius: 5px;
+    }
+    .card-sub { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--muted); white-space: nowrap; }
+    .card-coords { font-family: var(--mono); font-size: 11.5px; }
+    .card-ago::before { content: '·'; margin-right: 8px; color: var(--faint); }
+    .card-metrics { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex-shrink: 0; }
+    .speed-badge {
+      display: inline-flex; align-items: baseline; gap: 3px; padding: 3px 8px; border-radius: 6px;
+      font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums;
+    }
+    .speed-badge small { font-size: 10px; font-weight: 600; opacity: .8; }
+    .heading-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; color: var(--muted); }
+    .heading-badge .icon { width: 12px; height: 12px; color: var(--accent); }
+
+    .empty {
+      position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 6px; padding: 24px; text-align: center; color: var(--muted);
+    }
+    .empty-icon {
+      width: 56px; height: 56px; margin-bottom: 8px; border-radius: 16px; display: grid; place-items: center;
+      background: var(--accent-soft); color: var(--accent); position: relative;
+    }
+    .empty-icon::after {
+      content: ''; position: absolute; inset: -6px; border-radius: 20px;
+      border: 2px solid var(--accent-border); animation: ping 2.2s ease-out infinite;
+    }
+    .empty-icon .icon { width: 26px; height: 26px; }
+    .empty strong { color: var(--text); font-size: 14px; font-weight: 600; }
+    .empty span { font-size: 12.5px; max-width: 240px; }
+
+    /* =========================================================
+       Map elements
+       ========================================================= */
+    .leaflet-container { font-family: var(--font); background: var(--surface-3); }
+    .leaflet-control-attribution {
+      background: var(--overlay) !important; color: var(--muted) !important;
+      font-size: 10.5px; border-radius: 6px 0 0 0; padding: 1px 6px !important;
+    }
+    .leaflet-control-attribution a { color: var(--text-2) !important; }
+
+    path.route-glow { stroke: var(--route-glow); }
+    path.route-line { stroke: var(--route); }
+    path.route-ghost { stroke: var(--route); stroke-opacity: .3; stroke-dasharray: 2 9; stroke-linecap: round; }
+    path.route-flow {
+      stroke: var(--route-flow); stroke-dasharray: 1 12; stroke-linecap: round;
+      animation: dash-flow 1s linear infinite;
+    }
+    @keyframes dash-flow { from { stroke-dashoffset: 13; } to { stroke-dashoffset: 0; } }
+
+    path.zone-path { stroke: var(--zone); fill: var(--zone); fill-opacity: .1; stroke-width: 2.5px; }
+    path.zone-path.breach { stroke: var(--danger); fill: var(--danger); animation: zone-pulse 1s ease-in-out infinite alternate; }
+    @keyframes zone-pulse { from { fill-opacity: .12; stroke-width: 2px; } to { fill-opacity: .38; stroke-width: 5px; } }
+
+    .lt-divicon { background: none; border: 0; }
+    .cur-marker { position: relative; width: 44px; height: 44px; --mk: var(--accent); }
+    .cur-marker.breach { --mk: var(--danger); }
+    .cur-marker.history { --mk: var(--warning); }
+    .cur-pulse {
+      position: absolute; inset: 6px; border-radius: 50%; background: var(--mk);
+      animation: cur-pulse 2s ease-out infinite;
+    }
+    @keyframes cur-pulse { 0% { transform: scale(.5); opacity: .55; } 100% { transform: scale(1.5); opacity: 0; } }
+    .cur-dot {
+      position: absolute; left: 50%; top: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px;
+      border-radius: 50%; background: var(--mk); border: 3px solid #fff; box-shadow: 0 2px 6px rgba(0, 0, 0, .35);
+    }
+    .cur-heading { position: absolute; inset: 0; }
+    .cur-heading::before {
+      content: ''; position: absolute; left: 50%; top: 0; margin-left: -7px;
+      border-left: 7px solid transparent; border-right: 7px solid transparent; border-bottom: 11px solid var(--mk);
+      filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .3));
+    }
+    .start-marker {
+      width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center;
+      background: var(--success); color: #fff; border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0, 0, 0, .3);
+    }
+    .start-marker .icon { width: 13px; height: 13px; stroke-width: 2.5; }
+    .sel-ring {
+      width: 26px; height: 26px; border-radius: 50%;
+      border: 2.5px solid var(--accent); box-shadow: 0 0 0 5px var(--accent-soft);
+    }
+    .route-arrow svg { display: block; }
+    .route-arrow path { fill: var(--route); stroke: var(--surface); stroke-width: 2; }
+
+    .leaflet-tooltip.map-tip {
+      background: var(--tip-bg); color: var(--tip-text); border: 0; border-radius: 8px;
+      padding: 7px 10px; box-shadow: var(--shadow-lg); font-size: 12px; line-height: 1.45;
+    }
+    .leaflet-tooltip-top.map-tip::before { border-top-color: var(--tip-bg); }
+    .leaflet-tooltip-bottom.map-tip::before { border-bottom-color: var(--tip-bg); }
+    .leaflet-tooltip-left.map-tip::before { border-left-color: var(--tip-bg); }
+    .leaflet-tooltip-right.map-tip::before { border-right-color: var(--tip-bg); }
+    .tip-time { font-weight: 700; font-variant-numeric: tabular-nums; }
+    .tip-meta { opacity: .75; font-variant-numeric: tabular-nums; }
+
+    .leaflet-draw-tooltip {
+      background: var(--tip-bg); color: var(--tip-text); border: 0; border-radius: 6px;
+      font-family: var(--font); font-size: 12px; padding: 6px 9px; box-shadow: var(--shadow);
+    }
+    .leaflet-draw-tooltip::before { border-right-color: var(--tip-bg); }
+    .leaflet-draw-tooltip-subtext { color: inherit; opacity: .7; }
+    .leaflet-div-icon.leaflet-editing-icon {
+      background: #fff; border: 2px solid var(--accent); border-radius: 50%; box-shadow: var(--shadow-sm);
+    }
+
+    /* =========================================================
+       Toasts
+       ========================================================= */
+    .toasts {
+      position: absolute; top: 16px; right: 66px; z-index: 40;   /* beside the map controls, clear of the banners */
+      display: flex; flex-direction: column; gap: 10px;
+      width: 340px; max-width: calc(100% - 32px); pointer-events: none;
+    }
+    .toast {
+      display: flex; align-items: flex-start; gap: 11px; pointer-events: auto;
+      padding: 12px 8px 12px 14px; border-radius: 10px;
+      background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--accent);
+      box-shadow: var(--shadow-lg); animation: toast-in .25s ease-out;
+      transition: opacity .25s, transform .25s;
+    }
+    .toast.leaving { opacity: 0; transform: translateX(12px); }
+    @keyframes toast-in { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
+    .toast-icon { color: var(--accent); margin-top: 1px; }
+    .toast-icon .icon { width: 18px; height: 18px; }
+    .toast.success { border-left-color: var(--success); } .toast.success .toast-icon { color: var(--success); }
+    .toast.warning { border-left-color: var(--warning); } .toast.warning .toast-icon { color: var(--warning); }
+    .toast.alert { border-left-color: var(--danger); } .toast.alert .toast-icon { color: var(--danger); }
+    .toast-body { flex: 1; min-width: 0; }
+    .toast-title { font-size: 13.5px; font-weight: 600; color: var(--text); }
+    .toast-msg { margin-top: 2px; font-size: 12.5px; color: var(--muted); }
+    .toast-close {
+      width: 26px; height: 26px; display: grid; place-items: center; flex-shrink: 0;
+      border: 0; border-radius: 6px; background: none; color: var(--faint); cursor: pointer;
+    }
+    .toast-close:hover { background: var(--surface-3); color: var(--text); }
+    .toast-close .icon { width: 14px; height: 14px; }
+
+    /* =========================================================
+       Modal
+       ========================================================= */
+    .modal-backdrop {
+      position: fixed; inset: 0; z-index: 3000; padding: 16px;
+      display: grid; place-items: center; background: var(--backdrop);
+      animation: fade-in .15s ease-out;
+    }
+    @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+    .modal {
+      width: 100%; max-width: 420px; padding: 24px;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow-lg);
+      animation: modal-in .18s ease-out;
+    }
+    @keyframes modal-in { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
+    .modal-icon {
+      width: 44px; height: 44px; margin-bottom: 16px; border-radius: 50%; display: grid; place-items: center;
+      background: var(--danger-soft); color: var(--danger);
+    }
+    .modal-icon .icon { width: 22px; height: 22px; }
+    .modal h2 { margin: 0 0 6px; font-size: 17px; font-weight: 600; }
+    .modal p { margin: 0; font-size: 14px; line-height: 1.55; color: var(--muted); }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 24px; }
+    .modal-icon.accent { background: var(--accent-soft); color: var(--accent); }
+    .modal code { font-family: var(--mono); font-size: 12.5px; background: var(--surface-3); padding: 1px 5px; border-radius: 4px; color: var(--text-2); }
+
+    /* Manual entry form (Test data ▸ Enter coordinates) */
+    .modal.form-modal { max-width: 460px; padding: 0; overflow: hidden; }
+    .form-head { display: flex; align-items: flex-start; gap: 14px; padding: 20px 20px 18px 24px; border-bottom: 1px solid var(--border); }
+    .form-head .modal-icon { margin: 0; flex-shrink: 0; width: 40px; height: 40px; border-radius: 10px; }
+    .form-head .modal-icon .icon { width: 20px; height: 20px; }
+    .form-head-text { flex: 1; min-width: 0; }
+    .form-head-text h2 { margin: 0 0 3px; }
+    .form-head-text p { font-size: 13px; }
+    .form-close {
+      width: 32px; height: 32px; display: grid; place-items: center; flex-shrink: 0; margin: -4px -4px 0 0;
+      border: 0; border-radius: 8px; background: none; color: var(--muted); cursor: pointer;
+    }
+    .form-close:hover { background: var(--surface-3); color: var(--text); }
+    .form-close .icon { width: 18px; height: 18px; }
+    .form-body { padding: 20px 24px 22px; }
+    .form-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px 14px; }
+    .field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+    .field.wide { grid-column: 1 / -1; }
+    .field-label { font-size: 12.5px; font-weight: 600; color: var(--text-2); }
+    .field-label em { font-style: normal; font-weight: 500; color: var(--muted); margin-left: 4px; }
+    .field-hint { font-size: 11.5px; color: var(--muted); }
+    .input-wrap { position: relative; display: flex; min-width: 0; }
+    .input-row { display: flex; gap: 8px; min-width: 0; }
+    .input-row .input-wrap { flex: 1; }
+    .field input {
+      width: 100%; min-width: 0; height: 40px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--border-strong);
+      background: var(--surface); color: var(--text); font: 500 14px var(--font); font-variant-numeric: tabular-nums;
+      transition: border-color .15s, box-shadow .15s;
+    }
+    .input-wrap .unit { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 14px; pointer-events: none; }
+    .input-wrap.has-unit input { padding-right: 28px; }
+    .field input::placeholder { color: var(--faint); }
+    .field input:hover { border-color: var(--faint); }
+    .field input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+    .field input.invalid { border-color: var(--danger); box-shadow: 0 0 0 3px var(--danger-soft); }
+    .input-row .btn { height: 40px; flex-shrink: 0; }
+    .form-tip {
+      display: flex; align-items: center; gap: 8px; margin-top: 18px; padding: 9px 12px; border-radius: 8px;
+      background: var(--surface-2); border: 1px dashed var(--border-strong); font-size: 12.5px; color: var(--muted);
+    }
+    .form-tip .icon { width: 15px; height: 15px; color: var(--accent); }
+    .form-msg { display: flex; align-items: center; gap: 8px; margin-top: 14px; font-size: 13px; font-weight: 500; padding: 9px 12px; border-radius: 8px; }
+    .form-msg .icon { width: 16px; height: 16px; }
+    .form-msg.ok { background: var(--success-soft); color: var(--success); }
+    .form-msg.err { background: var(--danger-soft); color: var(--danger); }
+    .form-foot {
+      display: flex; justify-content: flex-end; gap: 8px; padding: 14px 24px;
+      background: var(--surface-2); border-top: 1px solid var(--border);
+    }
+    /* Date & time picker (replaces the browser's native datetime picker) */
+    .dt-field { position: relative; flex: 1; min-width: 0; display: flex; }
+    .dt-trigger {
+      flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 38px 0 12px;
+      border-radius: 8px; border: 1px solid var(--border-strong); background: var(--surface); color: var(--text);
+      font: 500 14px var(--font); text-align: left; cursor: pointer; transition: border-color .15s, box-shadow .15s;
+    }
+    .dt-trigger .icon { color: var(--muted); }
+    .dt-trigger:hover { border-color: var(--faint); }
+    .dt-trigger:focus-visible, .dt-trigger[aria-expanded="true"] { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+    .dt-trigger[aria-expanded="true"] .icon { color: var(--accent); }
+    .dt-text { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+    .dt-text.placeholder { color: var(--faint); }
+    .dt-clear {
+      position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 28px; height: 28px;
+      display: grid; place-items: center; border: 0; border-radius: 6px; background: none; color: var(--muted); cursor: pointer;
+    }
+    .dt-clear:hover { background: var(--surface-3); color: var(--text); }
+    .dt-clear .icon { width: 14px; height: 14px; }
+
+    .dt-pop {
+      position: fixed; z-index: 3100; width: 304px; padding: 14px;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow-lg);
+      animation: pop-in .12s ease-out;
+    }
+    .dt-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+    .dt-month { font-size: 14px; font-weight: 600; color: var(--text); }
+    .dt-nav {
+      width: 32px; height: 32px; display: grid; place-items: center; border: 1px solid var(--border); border-radius: 8px;
+      background: var(--surface); color: var(--text-2); cursor: pointer;
+    }
+    .dt-nav:hover:not(:disabled) { background: var(--surface-3); color: var(--text); }
+    .dt-nav:disabled { opacity: .35; cursor: not-allowed; }
+    .dt-week, .dt-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+    .dt-week span { padding: 6px 0; text-align: center; font-size: 11px; font-weight: 600; letter-spacing: .04em; color: var(--muted); }
+    .dt-day {
+      position: relative; height: 36px; border: 0; border-radius: 8px; background: none; color: var(--text);
+      font: 500 13px var(--font); font-variant-numeric: tabular-nums; cursor: pointer;
+    }
+    .dt-day:hover:not(:disabled):not(.selected) { background: var(--surface-3); }
+    .dt-day.other { color: var(--faint); }
+    .dt-day.today { color: var(--accent-text); font-weight: 700; }
+    .dt-day.today::after {
+      content: ''; position: absolute; left: 50%; bottom: 5px; width: 4px; height: 4px; margin-left: -2px;
+      border-radius: 50%; background: var(--accent);
+    }
+    .dt-day.selected { background: var(--accent); color: #fff; font-weight: 600; }
+    .dt-day.selected::after { background: #fff; }
+    .dt-day:disabled { opacity: .35; cursor: not-allowed; }
+    .dt-day:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+    .dt-time {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      margin-top: 10px; padding-top: 12px; border-top: 1px solid var(--border);
+    }
+    .dt-time-label { display: flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 600; color: var(--text-2); }
+    .dt-time-label .icon { width: 15px; height: 15px; color: var(--muted); }
+    .dt-spins { display: flex; align-items: center; gap: 4px; }
+    .dt-spin { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+    .dt-spin button {
+      width: 42px; height: 18px; display: grid; place-items: center; border: 0; border-radius: 5px;
+      background: none; color: var(--muted); cursor: pointer;
+    }
+    .dt-spin button:hover { background: var(--surface-3); color: var(--text); }
+    .dt-spin button .icon { width: 14px; height: 14px; }
+    .dt-spin input {
+      width: 42px; height: 34px; padding: 0; text-align: center; border-radius: 8px; border: 1px solid var(--border-strong);
+      background: var(--surface); color: var(--text); font: 600 15px var(--font); font-variant-numeric: tabular-nums;
+    }
+    .dt-spin input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+    .dt-colon { font-weight: 700; color: var(--muted); }
+    .dt-foot { display: flex; align-items: center; gap: 6px; margin-top: 12px; }
+    .dt-foot [data-dt="apply"] { margin-left: auto; }
+
+    @media (max-width: 420px) {
+      .form-grid { grid-template-columns: minmax(0, 1fr); }
+      .form-head, .form-body, .form-foot { padding-left: 18px; padding-right: 18px; }
+    }
+
+    /* Test data: progress + drop overlay + click-to-add cursor */
+    .progress { width: 240px; max-width: 100%; height: 5px; margin-top: 7px; border-radius: 999px; background: var(--track); overflow: hidden; }
+    .progress span { display: block; height: 100%; width: 0; background: var(--accent); border-radius: inherit; transition: width .2s; }
+    .drop-overlay {
+      position: absolute; inset: 0; z-index: 50; display: grid; place-items: center; padding: 24px;
+      background: rgba(37, 99, 235, 0.12); border: 3px dashed var(--accent); pointer-events: none;
+    }
+    .drop-card {
+      display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 22px 28px; text-align: center;
+      background: var(--surface); border-radius: 14px; box-shadow: var(--shadow-lg); color: var(--muted); font-size: 12.5px;
+    }
+    .drop-card .icon { width: 28px; height: 28px; color: var(--accent); }
+    .drop-card strong { color: var(--text); font-size: 15px; }
+    #map.adding-points, #map.adding-points .leaflet-interactive { cursor: crosshair; }
+
+    /* =========================================================
+       Responsive
+       ========================================================= */
+    @media (max-width: 1360px) {
+      .last-fix { display: none; }
+    }
+    @media (max-width: 1240px) {
+      .btn-label { display: none; }
+      .hdr-actions .btn:not(.icon-btn) { padding: 0 10px; }
+      .seg-btn { padding: 0 8px; }
+    }
+    @media (max-width: 768px) {
+      :root { --header-h: 56px; }
+      .app-header { padding: 0 12px; gap: 8px; }
+      .brand-text span { display: none; }
+      .brand-text strong { font-size: 14px; }
+      .status-group { margin-left: 10px; padding-left: 10px; gap: 6px; }
+      .pill { padding: 0 8px; }
+      .pill .pill-text-long { display: none; }
+      .mobile-only { display: inline-flex !important; }
+
+      .hdr-actions {
+        display: none; position: absolute; top: calc(100% + 6px); right: 12px; width: 250px;
+        flex-direction: column; align-items: stretch; gap: 8px; padding: 10px;
+        background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow-lg);
+      }
+      .hdr-actions.open { display: flex; animation: pop-in .12s ease-out; }
+      .hdr-divider { display: none; }
+      .btn-label { display: inline; }
+      .seg { width: 100%; }
+      .seg-btn { flex: 1; justify-content: center; }
+      .select-wrap, .select-wrap select, .menu-wrap, .menu-wrap > .btn, .hdr-actions > .btn { width: 100%; }
+      .hdr-actions > .btn, .menu-wrap > .btn { justify-content: flex-start; }
+      .menu-wrap > .btn .chev { margin-left: auto; }
+      .menu { position: static; margin-top: 6px; box-shadow: none; width: 100%; }
+      .sidebar .menu.day-menu { position: absolute; margin-top: 0; box-shadow: var(--shadow-lg); width: 290px; max-width: calc(100vw - 24px); }
+      .tl-speed { flex-direction: column; align-items: stretch; gap: 8px; }
+      .tl-speed-label { flex-direction: row; justify-content: space-between; align-items: baseline; }
+
+      .stats-panel { top: 12px; left: 12px; width: auto; right: 64px; }
+      .stats-grid { gap: 6px; padding: 8px; }
+      .tile { padding: 8px; }
+      .tile-value { font-size: 15px; }
+      .tile-speed .tile-value { font-size: 22px; }
+      .tile-sub, .tile-hide-sm { display: none; }
+      .map-ctrl { top: 12px; right: 12px; }
+
+      .sidebar-toggle { display: none; }
+      .sidebar {
+        position: absolute; left: 0; right: 0; bottom: 0; width: auto; height: min(62%, 540px);
+        margin-right: 0 !important; border-left: 0; border-top: 1px solid var(--border);
+        border-radius: 16px 16px 0 0; box-shadow: 0 -10px 30px rgba(0, 0, 0, .15);
+        transition: transform .3s ease; z-index: 30;
+      }
+      .sidebar.collapsed { transform: translateY(calc(100% - 58px)); }
+      .sidebar-head { cursor: pointer; padding-top: 20px; position: relative; }
+      .sidebar-head::before {
+        content: ''; position: absolute; top: 8px; left: 50%; width: 36px; height: 4px; margin-left: -18px;
+        border-radius: 999px; background: var(--border-strong);
+      }
+      .banner-stack { bottom: 74px; }
+      .toasts {
+        position: fixed; top: calc(var(--header-h) + 12px); bottom: auto; right: auto; left: 50%;
+        transform: translateX(-50%); width: 340px;
+      }
+    }
+    @media (max-width: 420px) {
+      .status-group #zoneChip .pill-text { display: none; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: .001ms !important; animation-iteration-count: 1 !important;
+        transition-duration: .001ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ============ Icon sprite (Lucide-style, MIT) ============ -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-logo" viewBox="0 0 24 24"><path d="M12 2 19 21 12 17 5 21Z"/></symbol>
+  <symbol id="i-locate" viewBox="0 0 24 24"><line x1="2" x2="5" y1="12" y2="12"/><line x1="19" x2="22" y1="12" y2="12"/><line x1="12" x2="12" y1="2" y2="5"/><line x1="12" x2="12" y1="19" y2="22"/><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></symbol>
+  <symbol id="i-arrow-up" viewBox="0 0 24 24"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></symbol>
+  <symbol id="i-navigation" viewBox="0 0 24 24"><path d="M12 2 19 21 12 17 5 21Z"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></symbol>
+  <symbol id="i-shape" viewBox="0 0 24 24"><path d="M3.5 8.7c-.7.5-1 1.4-.7 2.2l2.8 8.7c.3.8 1 1.4 1.9 1.4h9c.9 0 1.6-.6 1.9-1.4l2.8-8.7c.3-.8 0-1.7-.7-2.2l-7.4-5.3a2.1 2.1 0 0 0-2.5 0Z"/></symbol>
+  <symbol id="i-fence" viewBox="0 0 24 24"><path d="M4 3 2 5v15c0 .6.4 1 1 1h2c.6 0 1-.4 1-1V5Z"/><path d="M6 8h4"/><path d="M6 18h4"/><path d="m12 3-2 2v15c0 .6.4 1 1 1h2c.6 0 1-.4 1-1V5Z"/><path d="M14 8h4"/><path d="M14 18h4"/><path d="m20 3-2 2v15c0 .6.4 1 1 1h2c.6 0 1-.4 1-1V5Z"/></symbol>
+  <symbol id="i-pencil" viewBox="0 0 24 24"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></symbol>
+  <symbol id="i-plus-square" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M8 12h8"/><path d="M12 8v8"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></symbol>
+  <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-undo" viewBox="0 0 24 24"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></symbol>
+  <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-chevron-up" viewBox="0 0 24 24"><path d="m18 15-6-6-6 6"/></symbol>
+  <symbol id="i-chevron-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+  <symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></symbol>
+  <symbol id="i-contrast" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 18a6 6 0 0 0 0-12v12z"/></symbol>
+  <symbol id="i-map" viewBox="0 0 24 24"><path d="M14.106 5.553a2 2 0 0 0 1.788 0l3.659-1.83A1 1 0 0 1 21 4.619v12.764a1 1 0 0 1-.553.894l-4.553 2.277a2 2 0 0 1-1.788 0l-4.212-2.106a2 2 0 0 0-1.788 0l-3.659 1.83A1 1 0 0 1 3 19.381V6.618a1 1 0 0 1 .553-.894l4.553-2.277a2 2 0 0 1 1.788 0z"/><path d="M15 5.764v15"/><path d="M9 3.236v15"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 24 24"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></symbol>
+  <symbol id="i-calendar" viewBox="0 0 24 24"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
+  <symbol id="i-gauge" viewBox="0 0 24 24"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></symbol>
+  <symbol id="i-route" viewBox="0 0 24 24"><circle cx="6" cy="19" r="3"/><path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"/><circle cx="18" cy="5" r="3"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></symbol>
+  <symbol id="i-compass" viewBox="0 0 24 24"><path d="m16.24 7.76-1.804 5.411a2 2 0 0 1-1.265 1.265L7.76 16.24l1.804-5.411a2 2 0 0 1 1.265-1.265z"/><circle cx="12" cy="12" r="10"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M6 3 20 12 6 21Z"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><rect x="14" y="4" width="4" height="16" rx="1"/><rect x="6" y="4" width="4" height="16" rx="1"/></symbol>
+  <symbol id="i-skip-back" viewBox="0 0 24 24"><path d="M19 20 9 12l10-8Z"/><line x1="5" x2="5" y1="19" y2="5"/></symbol>
+  <symbol id="i-skip-forward" viewBox="0 0 24 24"><path d="m5 4 10 8-10 8Z"/><line x1="19" x2="19" y1="5" y2="19"/></symbol>
+  <symbol id="i-radio" viewBox="0 0 24 24"><path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"/><path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5"/><circle cx="12" cy="12" r="2"/><path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5"/><path d="M19.1 4.9C23 8.8 23 15.1 19.1 19"/></symbol>
+  <symbol id="i-shield-check" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></symbol>
+  <symbol id="i-shield-alert" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="M12 8v4"/><path d="M12 16h.01"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
+  <symbol id="i-check-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></symbol>
+  <symbol id="i-wifi-off" viewBox="0 0 24 24"><path d="M12 20h.01"/><path d="M8.5 16.429a5 5 0 0 1 7 0"/><path d="M5 12.859a10 10 0 0 1 5.17-2.69"/><path d="M19 12.859a10 10 0 0 0-2.007-1.523"/><path d="M2 8.82a15 15 0 0 1 4.177-2.643"/><path d="M22 8.82a15 15 0 0 0-11.288-3.764"/><path d="m2 2 20 20"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></symbol>
+  <symbol id="i-flag" viewBox="0 0 24 24"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><path d="M3 12h.01"/><path d="M3 18h.01"/><path d="M3 6h.01"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M8 6h13"/></symbol>
+  <symbol id="i-history" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></symbol>
+  <symbol id="i-activity" viewBox="0 0 24 24"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/></symbol>
+  <symbol id="i-hash" viewBox="0 0 24 24"><line x1="4" x2="20" y1="9" y2="9"/><line x1="4" x2="20" y1="15" y2="15"/><line x1="10" x2="8" y1="3" y2="21"/><line x1="16" x2="14" y1="3" y2="21"/></symbol>
+  <symbol id="i-flask" viewBox="0 0 24 24"><path d="M14 2v6a2 2 0 0 0 .245.96l5.51 10.08A2 2 0 0 1 18 22H6a2 2 0 0 1-1.755-2.96l5.51-10.08A2 2 0 0 0 10 8V2"/><path d="M6.453 15h11.094"/><path d="M8.5 2h7"/></symbol>
+  <symbol id="i-pointer" viewBox="0 0 24 24"><path d="M14 4.1 12 6"/><path d="m5.1 8-2.9-.8"/><path d="m6 12-1.9 2"/><path d="M7.2 2.2 8 5.1"/><path d="M9.037 9.69a.498.498 0 0 1 .653-.653l11 4.5a.5.5 0 0 1-.074.949l-4.349 1.041a1 1 0 0 0-.74.739l-1.04 4.35a.5.5 0 0 1-.95.074z"/></symbol>
+  <symbol id="i-keyboard" viewBox="0 0 24 24"><path d="M10 8h.01"/><path d="M12 12h.01"/><path d="M14 8h.01"/><path d="M16 12h.01"/><path d="M18 8h.01"/><path d="M6 8h.01"/><path d="M7 16h10"/><path d="M8 12h.01"/><rect width="20" height="16" x="2" y="4" rx="2"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></symbol>
+  <symbol id="i-satellite" viewBox="0 0 24 24"><path d="M4 10a7.31 7.31 0 0 0 10 10Z"/><path d="m9 15 3-3"/><path d="M17 13a6 6 0 0 0-6-6"/><path d="M21 13A10 10 0 0 0 11 3"/></symbol>
+</svg>
+
+<!-- ============ Header ============ -->
+<header class="app-header">
+  <div class="header-left">
+    <div class="brand">
+      <div class="brand-mark"><svg class="icon"><use href="#i-logo"/></svg></div>
+      <div class="brand-text">
+        <strong>LocalTracker</strong>
+        <span>Live Asset Monitor</span>
+      </div>
+    </div>
+
+    <div class="status-group">
+      <span id="connPill" class="pill" role="status" aria-live="polite">
+        <span class="dot"></span><span id="connText">Connecting</span>
+      </span>
+      <span id="zoneChip" class="pill" hidden>
+        <svg class="icon"><use id="zoneChipIcon" href="#i-shield"/></svg><span class="pill-text" id="zoneChipText">Zone set</span>
+      </span>
+      <span id="lastFix" class="last-fix">
+        <svg class="icon"><use href="#i-clock"/></svg><span id="lastFixText">No fix yet</span>
+      </span>
+    </div>
+  </div>
+
+  <nav class="hdr-actions" id="controls" aria-label="Tracker controls">
+    <div class="seg" role="group" aria-label="Map view options">
+      <button id="followBtn" class="seg-btn active" aria-pressed="true" title="Keep the map centred on the asset">
+        <svg class="icon"><use href="#i-locate"/></svg><span class="btn-label">Follow</span>
+      </button>
+      <button id="toggleArrowsBtn" class="seg-btn" aria-pressed="false" title="Show direction arrows on the route">
+        <svg class="icon"><use href="#i-arrow-right"/></svg><span class="btn-label">Arrows</span>
+      </button>
+    </div>
+
+    <label class="select-wrap" title="How often to check for new positions">
+      <svg class="icon lead"><use href="#i-refresh"/></svg>
+      <select id="pollIntervalSelect" aria-label="Polling interval">
+        <option value="1000">Every 1s</option>
+        <option value="2000" selected>Every 2s</option>
+        <option value="5000">Every 5s</option>
+      </select>
+      <svg class="icon trail"><use href="#i-chevron-down"/></svg>
+    </label>
+
+    <div class="menu-wrap">
+      <button id="geofenceMenuBtn" class="btn" aria-haspopup="menu" aria-expanded="false" aria-controls="geofenceMenu" title="Geofence tools">
+        <svg class="icon"><use href="#i-fence"/></svg><span class="btn-label">Geofence</span>
+        <svg class="icon chev"><use href="#i-chevron-down"/></svg>
+      </button>
+      <div class="menu" id="geofenceMenu" role="menu">
+        <div class="menu-title">Geofence</div>
+        <button class="menu-item" role="menuitem" data-zone="draw">
+          <svg class="icon"><use href="#i-plus-square"/></svg>
+          <span><span id="drawZoneLabel">Draw zone</span><small>Click points on the map to outline an area</small></span>
+        </button>
+        <button class="menu-item" role="menuitem" data-zone="edit" id="editZoneItem">
+          <svg class="icon"><use href="#i-pencil"/></svg>
+          <span>Edit zone<small>Drag handles to reshape the current zone</small></span>
+        </button>
+        <div class="menu-sep"></div>
+        <button class="menu-item danger" role="menuitem" data-zone="remove" id="clearGeofenceBtn">
+          <svg class="icon"><use href="#i-trash"/></svg>
+          <span>Remove zone<small>Stops breach alerts</small></span>
+        </button>
+      </div>
+    </div>
+
+    <div class="menu-wrap">
+      <button id="testMenuBtn" class="btn" aria-haspopup="menu" aria-expanded="false" aria-controls="testMenu" title="Add test points, import or download JSON">
+        <svg class="icon"><use href="#i-flask"/></svg><span class="btn-label">Download</span>
+        <svg class="icon chev"><use href="#i-chevron-down"/></svg>
+      </button>
+      <div class="menu" id="testMenu" role="menu">
+        <div class="menu-title">Add points</div>
+        <button class="menu-item" role="menuitem" data-test="click">
+          <svg class="icon"><use href="#i-pointer"/></svg>
+          <span>Add by clicking the map<small>Each click sends a point, like the device</small></span>
+        </button>
+        <button class="menu-item" role="menuitem" data-test="manual">
+          <svg class="icon"><use href="#i-keyboard"/></svg>
+          <span>Enter coordinates…<small>Latitude, longitude and optional time</small></span>
+        </button>
+        <div class="menu-sep"></div>
+        <div class="menu-title">Import</div>
+        <button class="menu-item" role="menuitem" data-test="upload">
+          <svg class="icon"><use href="#i-upload"/></svg>
+          <span>Upload JSON file(s)…<small>Or drop files on the map · saved to History</small></span>
+        </button>
+        <!-- <button class="menu-item" role="menuitem" data-test="demo">
+          <svg class="icon"><use href="#i-route"/></svg>
+          <span>Load demo route<small>Genpact ⇄ Ambience Mall, shopping &amp; lunch, ends now</small></span>
+        </button> -->
+        <div class="menu-sep"></div>
+        <div class="menu-title">Download</div>
+        <button class="menu-item" role="menuitem" data-test="download-view">
+          <svg class="icon"><use href="#i-download"/></svg>
+          <span>Download this view<small id="downloadViewHint">Points currently on screen</small></span>
+        </button>
+        <button class="menu-item" role="menuitem" data-test="download-all">
+          <svg class="icon"><use href="#i-download"/></svg>
+          <span>Download all history<small>Every saved point in one file</small></span>
+        </button>
+      </div>
+    </div>
+    <input type="file" id="fileInput" accept=".json,application/json" multiple hidden>
+
+    <span class="hdr-divider" aria-hidden="true"></span>
+
+    <button id="themeToggle" class="btn icon-btn" aria-label="Switch to dark theme" title="Switch to dark theme">
+      <svg class="icon"><use id="themeIcon" href="#i-moon"/></svg>
+    </button>
+    <button id="clearHistoryBtn" class="btn btn-danger" title="Delete all recorded points">
+      <svg class="icon"><use href="#i-trash"/></svg><span class="btn-label">Clear track</span>
+    </button>
+  </nav>
+
+  <button id="mobileMenuBtn" class="btn icon-btn mobile-only" aria-label="Open controls" aria-expanded="false" aria-controls="controls">
+    <svg class="icon"><use href="#i-menu"/></svg>
+  </button>
+</header>
+
+<!-- ============ Main ============ -->
+<div class="main">
+  <div class="map-wrap">
+    <div id="map" role="application" aria-label="Tracking map"></div>
+
+    <!-- Telemetry -->
+    <section class="stats-panel" id="statsPanel" aria-label="Telemetry">
+      <div class="stats-head">
+        <div class="stats-title">
+          <svg class="icon"><use href="#i-activity"/></svg>Telemetry
+          <span class="mode-tag" id="modeTag">LIVE</span>
+        </div>
+        <span class="stats-summary" id="statsSummary">—</span>
+        <button class="collapse-btn" id="statsCollapseBtn" aria-expanded="true" aria-label="Collapse telemetry" title="Collapse">
+          <svg class="icon"><use href="#i-chevron-up"/></svg>
+        </button>
+      </div>
+      <div class="stats-grid">
+        <div class="tile wide">
+          <div class="tile-label"><svg class="icon"><use href="#i-gauge"/></svg>Speed</div>
+          <div class="tile-speed">
+            <div class="tile-value" id="speedInfo">0.0<small>km/h</small></div>
+            <span class="speed-state s-stopped" id="speedState">Stationary</span>
+          </div>
+        </div>
+        <div class="tile">
+          <div class="tile-label"><svg class="icon"><use href="#i-route"/></svg>Distance</div>
+          <div class="tile-value" id="distanceInfo">0<small>m</small></div>
+        </div>
+        <div class="tile">
+          <div class="tile-label"><svg class="icon"><use href="#i-clock"/></svg>Elapsed</div>
+          <div class="tile-value" id="elapsedInfo">—</div>
+          <div class="tile-sub" id="startInfo">Not started</div>
+        </div>
+        <div class="tile tile-hide-sm">
+          <div class="tile-label"><svg class="icon"><use href="#i-hash"/></svg>Points</div>
+          <div class="tile-value" id="pointsInfo">0</div>
+          <div class="tile-sub" id="latestInfo">Last at —</div>
+        </div>
+        <div class="tile tile-hide-sm">
+          <div class="tile-label"><svg class="icon"><use href="#i-compass"/></svg>Heading</div>
+          <div class="tile-heading">
+            <span class="compass"><svg class="icon" id="headingArrow"><use href="#i-navigation"/></svg></span>
+            <div class="tile-value" id="headingInfo">—</div>
+          </div>
+        </div>
+        <div class="tile wide tile-hide-sm">
+          <div class="tile-label"><svg class="icon"><use href="#i-pin"/></svg>Position</div>
+          <div class="tile-pos">
+            <div class="tile-value" id="positionInfo">—</div>
+            <button class="copy-btn" id="copyPosBtn" aria-label="Copy coordinates" title="Copy coordinates" disabled>
+              <svg class="icon"><use href="#i-copy"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Banners -->
+    <div class="banner-stack">
+      <div class="banner" id="toolBanner" hidden>
+        <span class="banner-icon"><svg class="icon"><use id="toolBannerIcon" href="#i-pointer"/></svg></span>
+        <div class="banner-text">
+          <strong id="toolBannerTitle"></strong><span id="toolBannerText"></span>
+          <div class="progress" id="toolProgress" hidden><span id="toolProgressBar"></span></div>
+        </div>
+        <div class="banner-actions" id="toolBannerActions"></div>
+      </div>
+      <div class="banner" id="zoneBanner" hidden>
+        <span class="banner-icon"><svg class="icon"><use href="#i-shape"/></svg></span>
+        <div class="banner-text"><strong id="zoneBannerTitle"></strong><span id="zoneBannerText"></span></div>
+        <div class="banner-actions" id="zoneBannerActions"></div>
+      </div>
+      <div class="banner danger" id="breachBanner" role="alert" hidden>
+        <span class="banner-icon"><svg class="icon"><use href="#i-shield-alert"/></svg></span>
+        <div class="banner-text"><strong>Geofence breach</strong><span id="breachText">The asset is outside the zone.</span></div>
+        <div class="banner-actions">
+          <button class="btn btn-sm btn-on-danger" id="breachLocateBtn"><svg class="icon"><use href="#i-locate"/></svg>Locate</button>
+          <button class="icon-btn-sm" id="breachDismissBtn" aria-label="Dismiss alert"><svg class="icon"><use href="#i-x"/></svg></button>
+        </div>
+      </div>
+    </div>
+
+    <div class="toasts" id="toast-container" aria-live="polite"></div>
+
+    <div class="drop-overlay" id="dropOverlay" hidden>
+      <div class="drop-card"><svg class="icon"><use href="#i-upload"/></svg><strong>Drop JSON files to import</strong><span>Points are saved on the server and appear in History</span></div>
+    </div>
+
+    <button id="sidebarToggleBtn" class="sidebar-toggle" aria-controls="sidebar" aria-expanded="true" aria-label="Hide track log" title="Hide track log">
+      <svg class="icon"><use href="#i-chevron-right"/></svg>
+    </button>
+  </div>
+
+  <!-- Sidebar -->
+  <aside id="sidebar" class="sidebar" aria-label="Track log">
+    <div class="sidebar-head" id="sidebarHead">
+      <div class="sidebar-title"><svg class="icon"><use href="#i-list"/></svg>Track log</div>
+      <div class="sidebar-head-actions">
+        <div class="menu-wrap">
+          <button class="btn btn-sm" id="historyBtn" aria-haspopup="menu" aria-expanded="false" aria-controls="historyMenu" title="View saved history">
+            <svg class="icon"><use href="#i-calendar"/></svg><span id="historyBtnLabel">Live</span>
+            <svg class="icon chev"><use href="#i-chevron-down"/></svg>
+          </button>
+          <div class="menu day-menu" id="historyMenu" role="menu"></div>
+        </div>
+        <span class="count-pill" id="point-count">0 pts</span>
+      </div>
+    </div>
+
+    <div class="timeline">
+      <div class="tl-top">
+        <span class="tl-label"><svg class="icon"><use href="#i-history"/></svg>Timeline</span>
+        <span class="badge live" id="timelineLabel">LIVE</span>
+      </div>
+      <input type="range" class="range" id="timelineSlider" min="0" max="0" value="0" step="any" aria-label="Timeline position" disabled>
+      <div class="tl-readout">
+        <span id="tlPosition">No points yet</span>
+        <strong id="tlTime">—</strong>
+      </div>
+      <div class="tl-controls">
+        <button class="tl-btn" id="stepBackBtn" aria-label="Previous point" title="Previous point" disabled><svg class="icon"><use href="#i-skip-back"/></svg></button>
+        <button class="tl-btn play" id="playBtn" aria-label="Replay route" title="Replay route" disabled><svg class="icon"><use id="playIcon" href="#i-play"/></svg></button>
+        <button class="tl-btn" id="stepFwdBtn" aria-label="Next point" title="Next point" disabled><svg class="icon"><use href="#i-skip-forward"/></svg></button>
+        <button class="btn btn-sm" id="backToLiveBtn" hidden><svg class="icon"><use href="#i-radio"/></svg>Back to live</button>
+      </div>
+      <div class="tl-speed">
+        <div class="tl-speed-label">Replay speed<span id="replayEstimate">—</span></div>
+        <div class="seg seg-sm" role="group" aria-label="Replay speed" id="speedGroup">
+          <button class="seg-btn" data-speed="0.5" aria-pressed="false">0.5×</button>
+          <button class="seg-btn" data-speed="1" aria-pressed="false">1×</button>
+          <button class="seg-btn" data-speed="2" aria-pressed="false">2×</button>
+          <button class="seg-btn" data-speed="4" aria-pressed="false">4×</button>
+          <button class="seg-btn" data-speed="8" aria-pressed="false">8×</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="list" id="dataListContainer">
+      <div class="virtual-scroller" id="virtualScroller"></div>
+      <div class="empty" id="emptyState">
+        <div class="empty-icon"><svg class="icon"><use href="#i-satellite"/></svg></div>
+        <strong>Waiting for first GPS fix…</strong>
+        <span>Positions sent by the device to <code>/api/location</code> will appear here.</span>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<!-- Confirm dialog -->
+<div class="modal-backdrop" id="modal" hidden>
+  <div class="modal" role="alertdialog" aria-modal="true" aria-labelledby="modalTitle" aria-describedby="modalMsg">
+    <div class="modal-icon" id="modalIcon"></div>
+    <h2 id="modalTitle"></h2>
+    <p id="modalMsg"></p>
+    <div class="modal-actions">
+      <button class="btn" id="modalCancel">Cancel</button>
+      <button class="btn btn-danger-solid" id="modalConfirm">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<!-- Manual point entry (Test data) -->
+<div class="modal-backdrop" id="entryModal" hidden>
+  <form class="modal form-modal" id="entryForm" role="dialog" aria-modal="true" aria-labelledby="entryTitle" novalidate>
+    <div class="form-head">
+      <div class="modal-icon accent"><svg class="icon"><use href="#i-keyboard"/></svg></div>
+      <div class="form-head-text">
+        <h2 id="entryTitle">Add a point</h2>
+        <p>Sent to the server like a device update and saved to History.</p>
+      </div>
+      <button type="button" class="form-close" id="entryCloseX" aria-label="Close"><svg class="icon"><use href="#i-x"/></svg></button>
+    </div>
+
+    <div class="form-body">
+      <div class="form-grid">
+        <div class="field">
+          <label class="field-label" for="entryLat">Latitude</label>
+          <div class="input-wrap has-unit"><input id="entryLat" inputmode="decimal" placeholder="28.99254" autocomplete="off"><span class="unit">°</span></div>
+          <span class="field-hint">-90 to 90</span>
+        </div>
+        <div class="field">
+          <label class="field-label" for="entryLng">Longitude</label>
+          <div class="input-wrap has-unit"><input id="entryLng" inputmode="decimal" placeholder="77.99993" autocomplete="off"><span class="unit">°</span></div>
+          <span class="field-hint">-180 to 180</span>
+        </div>
+        <div class="field wide">
+          <span class="field-label" id="entryTimeLabel">Date &amp; time <em>optional</em></span>
+          <div class="input-row">
+            <div class="dt-field">
+              <button type="button" class="dt-trigger" id="dtTrigger" aria-haspopup="dialog" aria-expanded="false" aria-controls="dtPop" aria-labelledby="entryTimeLabel dtTriggerText">
+                <svg class="icon"><use href="#i-calendar"/></svg><span class="dt-text placeholder" id="dtTriggerText">Current time</span>
+              </button>
+              <button type="button" class="dt-clear" id="dtClear" aria-label="Clear date and time" title="Clear" hidden><svg class="icon"><use href="#i-x"/></svg></button>
+            </div>
+            <button type="button" class="btn" id="entryNow" title="Fill in the current date and time"><svg class="icon"><use href="#i-clock"/></svg>Now</button>
+          </div>
+          <input type="hidden" id="entryTime">
+          <span class="field-hint">Leave empty to use the current time. After each point it moves on by 10 s.</span>
+        </div>
+      </div>
+
+      <div class="form-tip"><svg class="icon"><use href="#i-info"/></svg><span>Tip: paste <code>28.99254, 77.99993</code> into Latitude to fill both fields.</span></div>
+      <div class="form-msg" id="entryMsg" role="status" hidden></div>
+    </div>
+
+    <div class="form-foot">
+      <button type="button" class="btn" id="entryClose">Close</button>
+      <button type="submit" class="btn btn-primary" id="entrySubmit"><svg class="icon"><use href="#i-plus"/></svg>Add point</button>
+    </div>
+  </form>
+
+  <!-- Date & time picker popover -->
+  <div class="dt-pop" id="dtPop" role="dialog" aria-label="Choose date and time" hidden>
+    <div class="dt-head">
+      <button type="button" class="dt-nav" data-dt="prev" aria-label="Previous month"><svg class="icon"><use href="#i-chevron-left"/></svg></button>
+      <div class="dt-month" id="dtMonth" aria-live="polite"></div>
+      <button type="button" class="dt-nav" data-dt="next" aria-label="Next month"><svg class="icon"><use href="#i-chevron-right"/></svg></button>
+    </div>
+    <div class="dt-week" aria-hidden="true"><span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span></div>
+    <div class="dt-grid" id="dtGrid"></div>
+    <div class="dt-time">
+      <span class="dt-time-label"><svg class="icon"><use href="#i-clock"/></svg>Time</span>
+      <div class="dt-spins">
+        <div class="dt-spin">
+          <button type="button" data-unit="h" data-step="1" aria-label="Next hour" tabindex="-1"><svg class="icon"><use href="#i-chevron-up"/></svg></button>
+          <input id="dtH" data-unit="h" inputmode="numeric" maxlength="2" aria-label="Hours (0–23)">
+          <button type="button" data-unit="h" data-step="-1" aria-label="Previous hour" tabindex="-1"><svg class="icon"><use href="#i-chevron-down"/></svg></button>
+        </div>
+        <span class="dt-colon">:</span>
+        <div class="dt-spin">
+          <button type="button" data-unit="m" data-step="1" aria-label="Next minute" tabindex="-1"><svg class="icon"><use href="#i-chevron-up"/></svg></button>
+          <input id="dtM" data-unit="m" inputmode="numeric" maxlength="2" aria-label="Minutes (0–59)">
+          <button type="button" data-unit="m" data-step="-1" aria-label="Previous minute" tabindex="-1"><svg class="icon"><use href="#i-chevron-down"/></svg></button>
+        </div>
+        <span class="dt-colon">:</span>
+        <div class="dt-spin">
+          <button type="button" data-unit="s" data-step="1" aria-label="Next second" tabindex="-1"><svg class="icon"><use href="#i-chevron-up"/></svg></button>
+          <input id="dtS" data-unit="s" inputmode="numeric" maxlength="2" aria-label="Seconds (0–59)">
+          <button type="button" data-unit="s" data-step="-1" aria-label="Previous second" tabindex="-1"><svg class="icon"><use href="#i-chevron-down"/></svg></button>
+        </div>
+      </div>
+    </div>
+    <div class="dt-foot">
+      <button type="button" class="btn btn-sm btn-ghost" data-dt="clear">Clear</button>
+      <button type="button" class="btn btn-sm" data-dt="now">Now</button>
+      <button type="button" class="btn btn-sm btn-primary" data-dt="apply"><svg class="icon"><use href="#i-check"/></svg>Done</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  // =========================================================
+  // Config
+  // =========================================================
+  const API_BASE = '';
+  const ENDPOINTS = { locations: `${API_BASE}/api/location`, geofence: `${API_BASE}/api/geofence` };
+  const ARROW_SIZE = 16, ARROW_STEP = 5;
+  const LIVE_WINDOW = 1000;    // points kept on screen in live mode; older points are under History
+  const MAX_DOTS = 2000;       // point dots drawn per view; long days show every n-th dot
+  const ROW_HEIGHT = 80, LIST_PAD = 8;   // card 72px + 8px gap
+  // Replay pacing at 1×: ~1.5s per leg, whole replay between 6s and 60s (long routes speed up).
+  const REPLAY_SEG_MS = 1500, REPLAY_MIN_TOTAL_MS = 6000, REPLAY_MAX_TOTAL_MS = 60000;
+  const REPLAY_SPEEDS = [0.5, 1, 2, 4, 8];
+  const STALE_AFTER_MS = 2 * 60 * 1000;
+  const KEYS = { theme: 'lt-theme', mapStyle: 'lt-map-style', statsCollapsed: 'lt-stats-collapsed', replaySpeed: 'lt-replay-speed', geofence: 'geofence' };
+
+  // All providers below work without an API key.
+  const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services';
+  const TILES = {
+    light: {
+      url: `${ESRI}/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}`,
+      labels: `${ESRI}/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}`,
+      opts: { maxNativeZoom: 16, maxZoom: 19, attribution: 'Tiles &copy; Esri &mdash; Esri, HERE, Garmin, &copy; OpenStreetMap contributors' }
+    },
+    dark: {
+      url: `${ESRI}/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}`,
+      labels: `${ESRI}/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}`,
+      opts: { maxNativeZoom: 16, maxZoom: 19, attribution: 'Tiles &copy; Esri &mdash; Esri, HERE, Garmin, &copy; OpenStreetMap contributors' }
+    },
+    streets: {
+      url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+      opts: { maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' }
+    },
+    satellite: {
+      url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      opts: { maxZoom: 19, attribution: 'Imagery &copy; Esri' }
+    }
+  };
+  const MAP_STYLES = [
+    { id: 'auto', label: 'Auto', hint: 'Matches the app theme', icon: 'contrast' },
+    { id: 'light', label: 'Light', hint: 'Clean, low-contrast', icon: 'sun' },
+    { id: 'dark', label: 'Dark', hint: 'For night monitoring', icon: 'moon' },
+    { id: 'streets', label: 'Streets', hint: 'Detailed OpenStreetMap', icon: 'map' },
+    { id: 'satellite', label: 'Satellite', hint: 'Aerial imagery', icon: 'globe' }
+  ];
+
+  // =========================================================
+  // Helpers
+  // =========================================================
+  const $ = (id) => document.getElementById(id);
+  const store = {
+    get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
+    remove(k) { try { localStorage.removeItem(k); } catch (e) {} }
+  };
+  const icon = (name, cls = '', style = '') =>
+    `<svg class="icon ${cls}" aria-hidden="true"${style ? ` style="${style}"` : ''}><use href="#i-${name}"/></svg>`;
+  const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  const isMobile = () => window.matchMedia('(max-width: 768px)').matches;
+
+  function parseTime(t) { const ms = typeof t === 'number' ? t : Date.parse(t); return Number.isFinite(ms) ? ms : null; }
+  function fmtClock(ms) {
+    const s = Math.max(0, Math.ceil(ms / 1000));
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  }
+  // Only touch the DOM when the content actually changes (used by the per-frame replay HUD)
+  function setText(el, text) { if (el.textContent !== text) el.textContent = text; }
+  function setHTML(el, markup) {
+    if (el._html === markup && el._out === el.innerHTML) return;   // unchanged (and not overwritten elsewhere)
+    el.innerHTML = markup; el._html = markup; el._out = el.innerHTML;
+  }
+  function fmtTime(t, withSeconds = true) {
+    const ms = parseTime(t);
+    if (ms === null) return '—';
+    return new Date(ms).toLocaleTimeString([], withSeconds
+      ? { hour: '2-digit', minute: '2-digit', second: '2-digit' }
+      : { hour: '2-digit', minute: '2-digit' });
+  }
+  function fmtAgo(t) {
+    const ms = parseTime(t);
+    if (ms === null) return '';
+    const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
+    if (s < 5) return 'just now';
+    if (s < 60) return `${s}s ago`;
+    const m = Math.floor(s / 60);
+    if (m < 60) return `${m}m ago`;
+    const h = Math.floor(m / 60);
+    if (h < 24) return `${h}h ago`;
+    return `${Math.floor(h / 24)}d ago`;
+  }
+  function fmtDuration(ms) {
+    if (!Number.isFinite(ms) || ms < 0) return '—';
+    const s = Math.floor(ms / 1000), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+    if (h) return `${h}h ${String(m).padStart(2, '0')}m`;
+    if (m) return `${m}m ${String(sec).padStart(2, '0')}s`;
+    return `${sec}s`;
+  }
+  function fmtDistance(km) {
+    if (!Number.isFinite(km) || km < 0) km = 0;
+    if (km < 1) return { v: String(Math.round(km * 1000)), u: 'm' };
+    return { v: km < 100 ? km.toFixed(2) : km.toFixed(1), u: 'km' };
+  }
+  function speedClass(speed) {
+    const v = parseFloat(speed) || 0;
+    if (v < 1) return 'stopped';
+    if (v < 20) return 'slow';
+    if (v < 60) return 'moving';
+    return 'fast';
+  }
+  const SPEED_LABEL = { stopped: 'Stationary', slow: 'Slow', moving: 'Moving', fast: 'Fast' };
+
+  function toRad(d) { return d * Math.PI / 180; }
+  function toDeg(r) { return r * 180 / Math.PI; }
+  function computeBearing(a, b) {
+    const lat1 = toRad(a[0]), lat2 = toRad(b[0]), dLon = toRad(b[1] - a[1]);
+    const y = Math.sin(dLon) * Math.cos(lat2), x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+    return (toDeg(Math.atan2(y, x)) + 360) % 360;
+  }
+  function getHeadingString(brng) { return ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW', 'N'][Math.round(brng / 45) % 8]; }
+
+  // =========================================================
+  // DOM
+  // =========================================================
+  const html = document.documentElement;
+  const connPill = $('connPill'), connText = $('connText');
+  const zoneChip = $('zoneChip'), zoneChipIcon = $('zoneChipIcon'), zoneChipText = $('zoneChipText');
+  const lastFixEl = $('lastFix'), lastFixText = $('lastFixText');
+  const controls = $('controls'), mobileMenuBtn = $('mobileMenuBtn');
+  const followBtn = $('followBtn'), arrowsBtn = $('toggleArrowsBtn'), pollSelect = $('pollIntervalSelect');
+  const geofenceMenuBtn = $('geofenceMenuBtn'), geofenceMenu = $('geofenceMenu');
+  const editZoneItem = $('editZoneItem'), removeZoneItem = $('clearGeofenceBtn'), drawZoneLabel = $('drawZoneLabel');
+  const themeToggle = $('themeToggle'), themeIcon = $('themeIcon');
+
+  const statsPanel = $('statsPanel'), statsCollapseBtn = $('statsCollapseBtn'), statsSummary = $('statsSummary'), modeTag = $('modeTag');
+  const speedInfoEl = $('speedInfo'), speedStateEl = $('speedState'), distanceInfoEl = $('distanceInfo');
+  const elapsedInfoEl = $('elapsedInfo'), startInfoEl = $('startInfo'), pointsInfoEl = $('pointsInfo'), latestInfoEl = $('latestInfo');
+  const headingInfoEl = $('headingInfo'), headingArrow = $('headingArrow'), positionInfoEl = $('positionInfo'), copyPosBtn = $('copyPosBtn');
+
+  const zoneBanner = $('zoneBanner'), zoneBannerTitle = $('zoneBannerTitle'), zoneBannerText = $('zoneBannerText'), zoneBannerActions = $('zoneBannerActions');
+  const breachBanner = $('breachBanner'), breachText = $('breachText');
+  const toastContainer = $('toast-container');
+
+  const sidebar = $('sidebar'), sidebarToggleBtn = $('sidebarToggleBtn'), sidebarHead = $('sidebarHead');
+  const pointCountEl = $('point-count');
+  const timelineSlider = $('timelineSlider'), timelineLabel = $('timelineLabel'), tlPosition = $('tlPosition'), tlTime = $('tlTime');
+  const stepBackBtn = $('stepBackBtn'), stepFwdBtn = $('stepFwdBtn'), playBtn = $('playBtn'), playIcon = $('playIcon'), backToLiveBtn = $('backToLiveBtn');
+  const speedGroup = $('speedGroup'), replayEstimate = $('replayEstimate');
+  const historyBtn = $('historyBtn'), historyBtnLabel = $('historyBtnLabel'), historyMenu = $('historyMenu');
+  const dataListContainer = $('dataListContainer'), virtualScroller = $('virtualScroller'), emptyState = $('emptyState');
+
+  const modal = $('modal'), modalTitle = $('modalTitle'), modalMsg = $('modalMsg'), modalIcon = $('modalIcon');
+  const modalConfirm = $('modalConfirm'), modalCancel = $('modalCancel');
+
+  // =========================================================
+  // State
+  // =========================================================
+  let fullPointsData = [];   // { lat, lng, time, speed, heading, bearing, cum }
+  let renderData = [];
+  let viewIndex = null;      // null = live, otherwise number of points shown (history)
+  let selectedIdx = null;
+  let followEnabled = true, arrowsEnabled = false;
+  let geofencePolygon = null, lastWasInside = true, zoneState = 'none';
+  let breachSince = null, breachDismissed = false;
+  let zoneMode = null, drawHandler = null, editHandler = null;
+  let connState = 'connecting';
+  let replay = null;         // { pos, playing, passed, lastTs, raf } while a replay scene is on the map
+  let replayDone = false;    // finished replay: holds the history view on the last point
+  let replaySpeed = Number(store.get(KEYS.replaySpeed));
+  if (!REPLAY_SPEEDS.includes(replaySpeed)) replaySpeed = 1;
+  let dataGeneration = 0;    // bumps on clear / dataset switch, so in-flight polls don't apply stale data
+  let liveEpoch = null;      // server data epoch of the live window (null = reload on next poll)
+  let liveLastId = 0;        // newest point id we have; polls ask only for ?after=<id>
+  let liveLatest = null;     // newest live point (for "Last fix"), kept while viewing a saved day
+  let dayView = null;        // { day, label, from, to, count } while viewing a saved day, else null
+  let toolMode = null;       // Test data: 'add' (click-to-add) | 'import' (sending a file) | null
+  let activeModalClose = null;
+
+  // =========================================================
+  // Map
+  // =========================================================
+  const map = L.map('map', { zoomControl: false }).setView([28.48, 77.07], 13);
+  map.attributionControl.setPrefix('<a href="https://leafletjs.com">Leaflet</a>');
+  map.createPane('pointsPane').style.zIndex = 450;
+  const pointRenderer = L.canvas({ pane: 'pointsPane', padding: 0.5 });
+
+  const mq = window.matchMedia('(prefers-color-scheme: dark)');
+  const effectiveTheme = () => html.getAttribute('data-theme') || (mq.matches ? 'dark' : 'light');
+
+  let mapStyle = store.get(KEYS.mapStyle);
+  if (!MAP_STYLES.some((s) => s.id === mapStyle)) mapStyle = 'auto';
+  let baseLayer = null, baseKey = null;
+  function refreshBaseLayer() {
+    const key = mapStyle === 'auto' ? effectiveTheme() : mapStyle;
+    if (key === baseKey) return;
+    if (baseLayer) map.removeLayer(baseLayer);
+    const def = TILES[key];
+    const layers = [L.tileLayer(def.url, def.opts)];
+    if (def.labels) layers.push(L.tileLayer(def.labels, { maxNativeZoom: def.opts.maxNativeZoom, maxZoom: def.opts.maxZoom }));
+    baseLayer = L.layerGroup(layers).addTo(map);
+    layers.forEach((l) => l.bringToBack());
+    layers[0].bringToBack();
+    baseKey = key;
+  }
+  refreshBaseLayer();
+
+  // Custom control group: zoom / recenter / map style.
+  // Lives outside the Leaflet container so its popover can stack above the overlays.
+  (function buildMapControls() {
+    const el = document.createElement('div');
+    el.className = 'map-ctrl';
+    el.innerHTML = `
+      <div class="ctrl-group">
+        <button class="ctrl-btn" data-act="zoom-in" aria-label="Zoom in" title="Zoom in">${icon('plus')}</button>
+        <button class="ctrl-btn" data-act="zoom-out" aria-label="Zoom out" title="Zoom out">${icon('minus')}</button>
+      </div>
+      <div class="ctrl-group">
+        <button class="ctrl-btn" id="recenterBtnMap" data-act="recenter" aria-label="Re-center on asset" title="Re-center on asset">${icon('locate')}</button>
+      </div>
+      <div class="ctrl-group layers-wrap">
+        <button class="ctrl-btn" id="layersBtn" data-act="layers" aria-label="Map style" title="Map style" aria-haspopup="menu" aria-expanded="false" aria-controls="layersPop">${icon('layers')}</button>
+        <div class="layers-pop" id="layersPop" role="menu">
+          <div class="menu-title">Map style</div>
+          ${MAP_STYLES.map((s) => `
+            <button class="menu-item" role="menuitemradio" data-style="${s.id}">
+              ${icon(s.icon)}<span>${s.label}<small>${s.hint}</small></span>${icon('check', 'check')}
+            </button>`).join('')}
+        </div>
+      </div>`;
+    el.addEventListener('click', (e) => {
+      const styleBtn = e.target.closest('[data-style]');
+      if (styleBtn) { setMapStyle(styleBtn.dataset.style); closeMenus(); return; }
+      const btn = e.target.closest('[data-act]');
+      if (!btn) return;
+      switch (btn.dataset.act) {
+        case 'zoom-in': map.zoomIn(); break;
+        case 'zoom-out': map.zoomOut(); break;
+        case 'recenter': centerOnLastPoint(); break;
+        case 'layers': toggleMenu(btn, el.querySelector('#layersPop')); break;
+      }
+    });
+    document.querySelector('.map-wrap').appendChild(el);
+  })();
+  const recenterBtnMap = $('recenterBtnMap');
+
+  function setMapStyle(id) {
+    mapStyle = id;
+    store.set(KEYS.mapStyle, id);
+    refreshBaseLayer();
+    updateMapStyleMenu();
+  }
+  function updateMapStyleMenu() {
+    document.querySelectorAll('#layersPop [data-style]').forEach((b) => {
+      const on = b.dataset.style === mapStyle;
+      b.classList.toggle('selected', on);
+      b.setAttribute('aria-checked', String(on));
+    });
+  }
+  updateMapStyleMenu();
+
+  // Layers
+  const geofenceLayer = new L.FeatureGroup().addTo(map);
+  const routeGhost = L.polyline([], { weight: 4, className: 'route-ghost', interactive: false }).addTo(map);  // un-played part during replay
+  const routeGlow = L.polyline([], { weight: 10, opacity: 0.35, className: 'route-glow', interactive: false, lineCap: 'round', lineJoin: 'round' }).addTo(map);
+  const routeLine = L.polyline([], { weight: 4, opacity: 1, className: 'route-line', interactive: false, lineCap: 'round', lineJoin: 'round' }).addTo(map);
+  const routeFlow = L.polyline([], { weight: 2.5, opacity: 0.9, className: 'route-flow', interactive: false }).addTo(map);
+  const dataPointsLayer = L.layerGroup().addTo(map);
+  const arrowLayer = L.layerGroup().addTo(map);
+  const markerLayer = L.layerGroup().addTo(map);
+
+  // =========================================================
+  // Theme
+  // =========================================================
+  function updateThemeUI() {
+    const dark = effectiveTheme() === 'dark';
+    themeIcon.setAttribute('href', dark ? '#i-sun' : '#i-moon');
+    const label = dark ? 'Switch to light theme' : 'Switch to dark theme';
+    themeToggle.setAttribute('aria-label', label);
+    themeToggle.title = label;
+  }
+  function onThemeChanged() {
+    updateThemeUI();
+    refreshBaseLayer();
+    redrawMap();   // canvas point colours come from tokens
+  }
+  themeToggle.addEventListener('click', () => {
+    const next = effectiveTheme() === 'dark' ? 'light' : 'dark';
+    html.setAttribute('data-theme', next);
+    store.set(KEYS.theme, next);
+    onThemeChanged();
+  });
+  const onSystemTheme = () => { if (!html.getAttribute('data-theme')) onThemeChanged(); };
+  if (mq.addEventListener) mq.addEventListener('change', onSystemTheme); else if (mq.addListener) mq.addListener(onSystemTheme);
+  updateThemeUI();
+
+  // =========================================================
+  // Toasts
+  // =========================================================
+  const TOAST_ICONS = { info: 'info', success: 'check-circle', warning: 'alert', alert: 'shield-alert' };
+  function showToast(title, message = '', type = 'info') {
+    const el = document.createElement('div');
+    el.className = `toast ${type}`;
+    el.setAttribute('role', type === 'alert' ? 'alert' : 'status');
+    el.innerHTML = `
+      <span class="toast-icon">${icon(TOAST_ICONS[type] || 'info')}</span>
+      <div class="toast-body"><div class="toast-title"></div>${message ? '<div class="toast-msg"></div>' : ''}</div>
+      <button class="toast-close" aria-label="Dismiss notification">${icon('x')}</button>`;
+    el.querySelector('.toast-title').textContent = title;
+    if (message) el.querySelector('.toast-msg').textContent = message;
+    const dismiss = () => {
+      if (el.classList.contains('leaving')) return;
+      el.classList.add('leaving');
+      setTimeout(() => el.remove(), 250);
+    };
+    el.querySelector('.toast-close').addEventListener('click', dismiss);
+    toastContainer.appendChild(el);
+    while (toastContainer.children.length > 4) toastContainer.firstElementChild.remove();
+    setTimeout(dismiss, type === 'alert' ? 8000 : 4500);
+  }
+
+  // =========================================================
+  // Confirm dialog
+  // =========================================================
+  function confirmDialog({ title, message, confirmLabel = 'Confirm', iconName = 'alert', tone = 'danger' }) {
+    return new Promise((resolve) => {
+      modalTitle.textContent = title;
+      modalMsg.textContent = message;
+      modalConfirm.textContent = confirmLabel;
+      modalConfirm.className = `btn ${tone === 'primary' ? 'btn-primary' : 'btn-danger-solid'}`;
+      modalIcon.className = `modal-icon${tone === 'primary' ? ' accent' : ''}`;
+      modalIcon.innerHTML = icon(iconName);
+      const prevFocus = document.activeElement;
+      modal.hidden = false;
+      modalCancel.focus();
+      const close = (result) => {
+        modal.hidden = true;
+        activeModalClose = null;
+        modalConfirm.onclick = modalCancel.onclick = modal.onclick = null;
+        if (prevFocus && prevFocus.focus) prevFocus.focus();
+        resolve(result);
+      };
+      activeModalClose = () => close(false);
+      modalConfirm.onclick = () => close(true);
+      modalCancel.onclick = () => close(false);
+      modal.onclick = (e) => { if (e.target === modal) close(false); };
+    });
+  }
+
+  // =========================================================
+  // Menus
+  // =========================================================
+  function closeMenus(except) {
+    document.querySelectorAll('.menu.open, .layers-pop.open').forEach((m) => {
+      if (m === except) return;
+      m.classList.remove('open');
+      const owner = document.querySelector(`[aria-controls="${m.id}"]`);
+      if (owner) owner.setAttribute('aria-expanded', 'false');
+    });
+  }
+  function toggleMenu(btn, menu) {
+    const open = !menu.classList.contains('open');
+    closeMenus(menu);
+    menu.classList.toggle('open', open);
+    btn.setAttribute('aria-expanded', String(open));
+  }
+  function closeMobileMenu() {
+    controls.classList.remove('open');
+    mobileMenuBtn.setAttribute('aria-expanded', 'false');
+  }
+  geofenceMenuBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleMenu(geofenceMenuBtn, geofenceMenu); });
+  mobileMenuBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const open = controls.classList.toggle('open');
+    mobileMenuBtn.setAttribute('aria-expanded', String(open));
+  });
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.menu-wrap, .layers-wrap')) closeMenus();
+    if (!e.target.closest('#controls, #mobileMenuBtn')) closeMobileMenu();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if (activeModalClose) { activeModalClose(); return; }
+    if (zoneMode) { cancelZoneMode(); return; }
+    if (toolMode === 'add') { stopAddMode(); return; }
+    closeMenus();
+    closeMobileMenu();
+  });
+
+  // =========================================================
+  // Status (connection / zone / last fix)
+  // =========================================================
+  const CONN = {
+    connecting: { text: 'Connecting', cls: '' },
+    live: { text: 'Live', cls: 'live' },
+    waiting: { text: 'Waiting for GPS', cls: '' },
+    offline: { text: 'Offline', cls: 'offline' },
+    paused: { text: 'Paused · history', cls: 'paused' },
+    replay: { text: 'Replaying', cls: 'paused' },
+    archive: { text: 'Saved history', cls: 'paused' }
+  };
+  function setConn(state) {
+    connState = state;
+    const c = CONN[state];
+    connPill.className = `pill ${c.cls}`;
+    connText.textContent = c.text;
+  }
+  function liveConnState() { return fullPointsData.length ? 'live' : 'waiting'; }
+
+  function setZoneState(state) {
+    zoneState = state;
+    zoneChip.hidden = state === 'none';
+    const map_ = {
+      idle: ['', 'shield', 'Zone set'],
+      inside: ['inside', 'shield-check', 'Inside zone'],
+      outside: ['outside', 'shield-alert', 'Outside zone']
+    };
+    if (state === 'none') return;
+    const [cls, ic, text] = map_[state];
+    zoneChip.className = `pill ${cls}`;
+    zoneChipIcon.setAttribute('href', `#i-${ic}`);
+    zoneChipText.textContent = text;
+  }
+
+  function tick() {
+    const last = liveLatest;   // always the live asset, even while a saved day is on screen
+    if (!last) {
+      lastFixText.textContent = 'No fix yet';
+      lastFixEl.classList.remove('stale');
+    } else {
+      lastFixText.textContent = `Last fix ${fmtAgo(last.time) || '—'}`;
+      const t = parseTime(last.time);
+      lastFixEl.classList.toggle('stale', t !== null && Date.now() - t > STALE_AFTER_MS);
+    }
+    virtualScroller.querySelectorAll('[data-ago]').forEach((el) => {
+      const p = fullPointsData[Number(el.dataset.ago)];
+      if (p) el.textContent = fmtAgo(p.time);
+    });
+  }
+
+  // =========================================================
+  // Map drawing
+  // =========================================================
+  function pointTooltip(pt, i) {
+    return `<div class="tip-time">${escapeHtml(fmtTime(pt.time))}</div>
+            <div class="tip-meta">#${i + 1} · ${pt.speed} km/h · ${pt.heading || '—'}</div>`;
+  }
+
+  function addArrow(p1, p2) {
+    const brng = computeBearing([p1.lat, p1.lng], [p2.lat, p2.lng]);
+    const mid = [(p1.lat + p2.lat) / 2, (p1.lng + p2.lng) / 2];
+    const svg = `<svg width="${ARROW_SIZE}" height="${ARROW_SIZE}" viewBox="0 0 24 24" style="transform: rotate(${brng}deg);"><path d="M12 2 L21 20 L12 15.5 L3 20 Z"/></svg>`;
+    L.marker(mid, {
+      icon: L.divIcon({ html: svg, className: 'lt-divicon route-arrow', iconSize: [ARROW_SIZE, ARROW_SIZE], iconAnchor: [ARROW_SIZE / 2, ARROW_SIZE / 2] }),
+      interactive: false, keyboard: false
+    }).addTo(arrowLayer);
+  }
+
+  function currentIcon(pt) {
+    const cls = ['cur-marker'];
+    if (viewIndex !== null || dayView) cls.push('history');
+    else if (zoneState === 'outside') cls.push('breach');
+    const heading = pt.bearing != null ? `<span class="cur-heading" style="transform: rotate(${Math.round(pt.bearing)}deg)"></span>` : '';
+    return L.divIcon({
+      className: 'lt-divicon',
+      html: `<div class="${cls.join(' ')}"><span class="cur-pulse"></span>${heading}<span class="cur-dot"></span></div>`,
+      iconSize: [44, 44], iconAnchor: [22, 22]
+    });
+  }
+
+  function pointStyles() {
+    const done = {
+      radius: 3.5, weight: 1.5, opacity: 1, fillOpacity: 1, renderer: pointRenderer,
+      color: cssVar('--point-stroke'), fillColor: cssVar('--point-fill')
+    };
+    return { done, todo: { ...done, opacity: 0.3, fillOpacity: 0.3 } };
+  }
+
+  // 1 = draw every dot; long saved days draw every n-th dot so the map stays fast
+  function dotStep(count) { return Math.max(1, Math.ceil(count / MAX_DOTS)); }
+
+  function addPointDot(pt, i, style) {
+    return L.circleMarker([pt.lat, pt.lng], style)
+      .bindTooltip(() => pointTooltip(pt, i), { direction: 'top', className: 'map-tip', offset: [0, -6] })
+      .on('click', () => { if (toolMode !== 'add') selectPoint(i, { fly: false }); })
+      .addTo(dataPointsLayer);
+  }
+
+  function addStartMarker(first) {
+    L.marker([first.lat, first.lng], {
+      icon: L.divIcon({ className: 'lt-divicon', html: `<div class="start-marker">${icon('flag')}</div>`, iconSize: [26, 26], iconAnchor: [13, 13] }),
+      keyboard: false
+    }).bindTooltip(`<div class="tip-time">Start · ${escapeHtml(fmtTime(first.time))}</div>`, { direction: 'top', className: 'map-tip', offset: [0, -12] })
+      .addTo(markerLayer);
+  }
+
+  // Redraw whatever is on the map now (normal view or the replay scene)
+  function redrawMap() {
+    if (replay) { buildReplayScene(replay.passed); renderReplayFrame(); }
+    else drawMapPoints(renderData);
+  }
+
+  function drawMapPoints(data) {
+    routeGhost.setLatLngs([]);
+    const coords = data.map((p) => [p.lat, p.lng]);
+    routeGlow.setLatLngs(coords); routeLine.setLatLngs(coords); routeFlow.setLatLngs(coords);
+    dataPointsLayer.clearLayers(); arrowLayer.clearLayers(); markerLayer.clearLayers();
+    if (!data.length) return;
+
+    const { done } = pointStyles();
+    const step = dotStep(data.length);
+    data.forEach((pt, i) => {
+      if (i % step === 0 || i === data.length - 1) addPointDot(pt, i, done);
+      if (arrowsEnabled && i > 0 && i % (ARROW_STEP * step) === 0) addArrow(data[i - 1], pt);
+    });
+
+    const first = data[0], last = data[data.length - 1];
+    if (data.length > 1) addStartMarker(first);
+    if (selectedIdx !== null && selectedIdx < data.length && selectedIdx !== data.length - 1) {
+      const s = data[selectedIdx];
+      L.marker([s.lat, s.lng], {
+        icon: L.divIcon({ className: 'lt-divicon', html: '<div class="sel-ring"></div>', iconSize: [26, 26], iconAnchor: [13, 13] }),
+        interactive: false, keyboard: false
+      }).addTo(markerLayer);
+    }
+    L.marker([last.lat, last.lng], { icon: currentIcon(last), zIndexOffset: 1000, keyboard: false })
+      .bindTooltip(`<div class="tip-time">${viewIndex === null ? 'Current position' : 'Selected point'}</div><div class="tip-meta">${escapeHtml(fmtTime(last.time))} · ${last.speed} km/h</div>`,
+        { direction: 'top', className: 'map-tip', offset: [0, -16] })
+      .addTo(markerLayer);
+  }
+
+  // =========================================================
+  // Telemetry panel
+  // =========================================================
+  function updateStats() {
+    const data = renderData, history = viewIndex !== null;
+    modeTag.textContent = history ? 'HISTORY' : dayView ? dayView.label.toUpperCase() : 'LIVE';
+    modeTag.className = `mode-tag${history || dayView ? ' history' : ''}`;
+
+    if (!data.length) {
+      speedInfoEl.innerHTML = '0.0<small>km/h</small>';
+      speedStateEl.className = 'speed-state s-stopped'; speedStateEl.textContent = 'No data';
+      distanceInfoEl.innerHTML = '0<small>m</small>';
+      elapsedInfoEl.textContent = '—'; startInfoEl.textContent = 'Not started';
+      pointsInfoEl.textContent = '0'; latestInfoEl.textContent = 'Last at —';
+      headingInfoEl.textContent = '—'; headingArrow.style.transform = '';
+      positionInfoEl.textContent = '—'; copyPosBtn.disabled = true;
+      statsSummary.textContent = '—';
+      return;
+    }
+    const first = data[0], last = data[data.length - 1];
+    const sc = speedClass(last.speed);
+    speedInfoEl.innerHTML = `${last.speed}<small>km/h</small>`;
+    speedStateEl.className = `speed-state s-${sc}`;
+    speedStateEl.textContent = SPEED_LABEL[sc];
+
+    const dist = fmtDistance(last.cum - first.cum);
+    distanceInfoEl.innerHTML = `${dist.v}<small>${dist.u}</small>`;
+
+    const t0 = parseTime(first.time), t1 = parseTime(last.time);
+    elapsedInfoEl.textContent = t0 !== null && t1 !== null ? fmtDuration(t1 - t0) : '—';
+    startInfoEl.textContent = `Since ${fmtTime(first.time, false)}`;
+
+    pointsInfoEl.innerHTML = history ? `${data.length}<small>/ ${fullPointsData.length}</small>` : String(data.length);
+    latestInfoEl.textContent = `Last at ${fmtTime(last.time, false)}`;
+
+    headingInfoEl.innerHTML = last.bearing != null ? `${last.heading}<small>${Math.round(last.bearing)}°</small>` : '—';
+    headingArrow.style.transform = last.bearing != null ? `rotate(${Math.round(last.bearing)}deg)` : '';
+
+    positionInfoEl.textContent = `${last.lat.toFixed(5)}, ${last.lng.toFixed(5)}`;
+    copyPosBtn.disabled = false;
+    statsSummary.textContent = `${last.speed} km/h · ${dist.v} ${dist.u}`;
+  }
+
+  function setStatsCollapsed(collapsed) {
+    statsPanel.classList.toggle('collapsed', collapsed);
+    statsCollapseBtn.setAttribute('aria-expanded', String(!collapsed));
+    const label = collapsed ? 'Expand telemetry' : 'Collapse telemetry';
+    statsCollapseBtn.setAttribute('aria-label', label);
+    statsCollapseBtn.title = collapsed ? 'Expand' : 'Collapse';
+  }
+  statsCollapseBtn.addEventListener('click', () => {
+    const collapsed = !statsPanel.classList.contains('collapsed');
+    setStatsCollapsed(collapsed);
+    store.set(KEYS.statsCollapsed, collapsed ? '1' : '0');
+  });
+  setStatsCollapsed(store.get(KEYS.statsCollapsed) === '1');
+
+  async function copyText(text) {
+    try {
+      if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(text); return true; }
+    } catch (e) {}
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      const ok = document.execCommand('copy');
+      ta.remove();
+      return ok;
+    } catch (e) { return false; }
+  }
+  copyPosBtn.addEventListener('click', async () => {
+    const text = positionInfoEl.textContent;
+    if (await copyText(text)) showToast('Coordinates copied', text, 'success');
+    else showToast('Copy failed', 'Your browser blocked clipboard access.', 'warning');
+  });
+
+  // =========================================================
+  // Timeline + list
+  // =========================================================
+  function updateTimelineUI() {
+    const n = fullPointsData.length, cur = viewIndex ?? n, history = viewIndex !== null;
+    timelineSlider.disabled = n < 2;
+    timelineSlider.min = n ? 1 : 0;
+    timelineSlider.max = n;
+    timelineSlider.value = cur;
+    timelineSlider.style.setProperty('--pct', `${n > 1 ? ((cur - 1) / (n - 1)) * 100 : 100}%`);
+
+    if (replay) {
+      timelineLabel.textContent = replay.playing ? 'REPLAY' : 'PAUSED';
+      timelineLabel.className = `badge replay${replay.playing ? ' playing' : ''}`;
+    } else if (dayView && !history) {
+      timelineLabel.textContent = dayView.label.toUpperCase();
+      timelineLabel.className = 'badge history';
+    } else {
+      timelineLabel.textContent = history ? 'HISTORY' : 'LIVE';
+      timelineLabel.className = `badge ${history ? 'history' : 'live'}`;
+    }
+    tlPosition.textContent = !n ? 'No points yet'
+      : replayDone && cur === n ? `Replay complete · ${n} points`
+      : `Point ${cur} of ${n}`;
+    tlTime.textContent = n ? fmtTime(fullPointsData[cur - 1].time) : '—';
+
+    stepBackBtn.disabled = n < 2 || cur <= 1;
+    stepFwdBtn.disabled = n < 2 || cur >= n;
+    playBtn.disabled = n < 2;
+    backToLiveBtn.hidden = !history && !dayView;
+    pointCountEl.textContent = `${n} ${n === 1 ? 'pt' : 'pts'}`;
+    updateReplayEstimate();
+  }
+
+  function replaySegMs() {
+    const segs = Math.max(1, fullPointsData.length - 1);
+    const total = clamp(segs * REPLAY_SEG_MS, REPLAY_MIN_TOTAL_MS, REPLAY_MAX_TOTAL_MS);
+    return total / segs / replaySpeed;
+  }
+  function updateReplayEstimate() {
+    const n = fullPointsData.length;
+    replayEstimate.textContent = n < 2 ? 'Needs 2+ points' : `Full route ≈ ${fmtClock((n - 1) * replaySegMs())}`;
+    speedGroup.querySelectorAll('[data-speed]').forEach((b) => {
+      const on = Number(b.dataset.speed) === replaySpeed;
+      b.classList.toggle('active', on);
+      b.setAttribute('aria-pressed', String(on));
+    });
+  }
+
+  function updateVirtualList() {
+    const n = fullPointsData.length;
+    emptyState.hidden = n > 0;
+    virtualScroller.style.height = n ? `${n * ROW_HEIGHT + LIST_PAD * 2}px` : '0px';
+    if (!n) { virtualScroller.innerHTML = ''; return; }
+
+    const scrollTop = dataListContainer.scrollTop, viewH = dataListContainer.clientHeight;
+    const start = Math.max(0, Math.floor((scrollTop - LIST_PAD) / ROW_HEIGHT) - 2);
+    const end = Math.min(n, Math.ceil((scrollTop + viewH) / ROW_HEIGHT) + 2);
+    const visibleCount = viewIndex ?? n;
+
+    let out = '';
+    for (let row = start; row < end; row++) {
+      const idx = n - 1 - row, p = fullPointsData[idx];
+      const cls = ['data-card'];
+      if (idx === selectedIdx) cls.push('selected');
+      if (idx >= visibleCount) cls.push('future');
+      const time = escapeHtml(fmtTime(p.time));
+      const arrow = p.bearing != null ? icon('arrow-up', '', `transform: rotate(${Math.round(p.bearing)}deg)`) : '';
+      out += `
+        <div class="${cls.join(' ')}" style="top:${row * ROW_HEIGHT + LIST_PAD}px" data-idx="${idx}" role="button" tabindex="0"
+             aria-label="Point ${idx + 1} at ${time}, ${p.speed} kilometres per hour">
+          <div class="card-main">
+            <div class="card-top">
+              <span class="card-idx">#${idx + 1}</span>
+              <span class="card-time">${time}</span>
+              ${idx === n - 1 ? '<span class="latest-tag">Latest</span>' : ''}
+            </div>
+            <div class="card-sub">
+              <span class="card-coords">${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}</span>
+              ${dayView && dayView.demo ? '' : `<span class="card-ago" data-ago="${idx}">${escapeHtml(fmtAgo(p.time))}</span>`}
+            </div>
+          </div>
+          <div class="card-metrics">
+            <span class="speed-badge s-${speedClass(p.speed)}">${p.speed}<small>km/h</small></span>
+            <span class="heading-badge">${arrow}${p.heading || '—'}</span>
+          </div>
+        </div>`;
+    }
+    virtualScroller.innerHTML = out;
+  }
+  dataListContainer.addEventListener('scroll', updateVirtualList);
+
+  function scrollListTo(idx) {
+    const n = fullPointsData.length;
+    if (idx == null || idx < 0 || idx >= n) return;
+    const top = (n - 1 - idx) * ROW_HEIGHT + LIST_PAD;
+    const st = dataListContainer.scrollTop, vh = dataListContainer.clientHeight;
+    if (top < st || top + ROW_HEIGHT > st + vh) {
+      dataListContainer.scrollTop = Math.max(0, top - vh / 2 + ROW_HEIGHT / 2);
+    }
+  }
+
+  virtualScroller.addEventListener('click', (e) => {
+    const card = e.target.closest('.data-card');
+    if (card) selectPoint(Number(card.dataset.idx));
+  });
+  virtualScroller.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const card = e.target.closest('.data-card');
+    if (!card) return;
+    e.preventDefault();
+    selectPoint(Number(card.dataset.idx));
+  });
+
+  // =========================================================
+  // View state (live / history / selection / follow)
+  // =========================================================
+  function renderView() {
+    renderData = viewIndex === null ? fullPointsData : fullPointsData.slice(0, viewIndex);
+    drawMapPoints(renderData);
+    updateStats();
+    updateTimelineUI();
+    updateVirtualList();
+  }
+
+  function setFollow(on) {
+    followEnabled = on;
+    followBtn.classList.toggle('active', on);
+    followBtn.setAttribute('aria-pressed', String(on));
+    recenterBtnMap.classList.toggle('attention', !on && fullPointsData.length > 0);
+  }
+
+  // count = number of points to show; null or >= total means live
+  function setViewIndex(count) {
+    const n = fullPointsData.length;
+    replayDone = false;
+    if (count == null || count >= n) {
+      const wasHistory = viewIndex !== null;
+      viewIndex = null;
+      if (wasHistory) {
+        if (dayView) setConn('archive');
+        else { setConn(liveConnState()); kickPoll(); }
+      }
+    } else {
+      viewIndex = Math.max(1, count);
+      setFollow(false);
+      setConn('paused');
+    }
+  }
+
+  function panIfOutside(p) {
+    if (!p) return;
+    const ll = L.latLng(p.lat, p.lng);
+    if (!map.getBounds().pad(-0.15).contains(ll)) map.panTo(ll, { animate: true });
+  }
+
+  function setTimeline(count) {
+    setViewIndex(count);
+    selectedIdx = viewIndex !== null ? viewIndex - 1 : null;
+    renderView();
+    if (viewIndex !== null) { scrollListTo(selectedIdx); panIfOutside(fullPointsData[selectedIdx]); }
+  }
+
+  function goLive() {
+    stopReplay();
+    setViewIndex(null);
+    selectedIdx = null;
+    renderView();
+  }
+
+  function selectPoint(idx, { fly = true } = {}) {
+    const p = fullPointsData[idx];
+    if (!p) return;
+    stopReplay();
+    setFollow(false);
+    if (viewIndex !== null && idx >= viewIndex) setViewIndex(idx + 1);
+    selectedIdx = idx;
+    renderView();
+    scrollListTo(idx);
+    if (fly) map.flyTo([p.lat, p.lng], Math.max(map.getZoom(), 16), { duration: 0.8 });
+  }
+
+  function centerOnLastPoint() {
+    if (dayView) { returnToLive(); return; }   // leave the saved day; the first live poll re-centres
+    goLive();
+    setFollow(true);
+    const last = fullPointsData[fullPointsData.length - 1];
+    if (last) map.setView([last.lat, last.lng], Math.max(map.getZoom(), 15), { animate: true });
+  }
+
+  followBtn.addEventListener('click', () => { if (followEnabled) setFollow(false); else centerOnLastPoint(); });
+  arrowsBtn.addEventListener('click', () => {
+    arrowsEnabled = !arrowsEnabled;
+    arrowsBtn.classList.toggle('active', arrowsEnabled);
+    arrowsBtn.setAttribute('aria-pressed', String(arrowsEnabled));
+    redrawMap();
+  });
+  map.on('dragstart', () => { if (followEnabled) setFollow(false); });
+
+  timelineSlider.addEventListener('input', (e) => { stopReplay(); setTimeline(Math.round(parseFloat(e.target.value))); });
+  stepBackBtn.addEventListener('click', () => { stopReplay(); setTimeline((viewIndex ?? fullPointsData.length) - 1); });
+  stepFwdBtn.addEventListener('click', () => { stopReplay(); setTimeline((viewIndex ?? fullPointsData.length) + 1); });
+  backToLiveBtn.addEventListener('click', centerOnLastPoint);
+
+  // =========================================================
+  // Replay — smooth playback along the route
+  //   replay.pos is a fractional point index: 2.4 = 40% of the way from point 3 to point 4.
+  // =========================================================
+  let replayDots = [], replayPlayed = [], replayMover = null, replayStyleSet = null, replayTrail = [], cameraBusy = false;
+  map.on('moveend', () => { cameraBusy = false; });
+
+  function updatePlayBtn() {
+    const playing = !!(replay && replay.playing);
+    playIcon.setAttribute('href', playing ? '#i-pause' : '#i-play');
+    const label = playing ? 'Pause replay' : (replay ? 'Resume replay' : 'Replay route');
+    playBtn.setAttribute('aria-label', label);
+    playBtn.title = `${label} (Space)`;
+  }
+
+  function moverIcon() {
+    return L.divIcon({
+      className: 'lt-divicon',
+      html: '<div class="cur-marker"><span class="cur-pulse"></span><span class="cur-heading"></span><span class="cur-dot"></span></div>',
+      iconSize: [44, 44], iconAnchor: [22, 22]
+    });
+  }
+
+  // Full route faded, played part solid, a moving marker on top.
+  function buildReplayScene(passed) {
+    const pts = fullPointsData;
+    routeGhost.setLatLngs(pts.map((p) => [p.lat, p.lng]));
+    dataPointsLayer.clearLayers(); arrowLayer.clearLayers(); markerLayer.clearLayers();
+    replayStyleSet = pointStyles();
+    const step = dotStep(pts.length);
+    replayDots = [];   // sparse on long days (only sampled dots exist)
+    pts.forEach((pt, i) => {
+      if (i % step === 0 || i === pts.length - 1) replayDots[i] = addPointDot(pt, i, i <= passed ? replayStyleSet.done : replayStyleSet.todo);
+      if (arrowsEnabled && i > 0 && i % (ARROW_STEP * step) === 0) addArrow(pts[i - 1], pt);
+    });
+    addStartMarker(pts[0]);
+    replayMover = L.marker([pts[passed].lat, pts[passed].lng], { icon: moverIcon(), zIndexOffset: 1000, keyboard: false, interactive: false }).addTo(markerLayer);
+    replayPlayed = pts.slice(0, passed + 1).map((p) => L.latLng(p.lat, p.lng));
+    // Long days: animate a single trail line per frame instead of three
+    replayTrail = pts.length > 3000 ? [routeLine] : [routeGlow, routeLine, routeFlow];
+    [routeGlow, routeLine, routeFlow].forEach((l) => { if (!replayTrail.includes(l)) l.setLatLngs([]); });
+  }
+
+  // Called once per frame after one or more points were passed (many per frame on long, fast replays)
+  function onReplayAdvanced(idx) {
+    viewIndex = idx + 1;
+    selectedIdx = idx;
+    updateTimelineUI();
+    updateVirtualList();
+    scrollListTo(idx);
+  }
+
+  function keepInView(ll) {
+    if (cameraBusy) return;
+    if (!map.getBounds().pad(-0.12).contains(ll)) {
+      cameraBusy = true;
+      map.panTo(ll, { animate: true, duration: 0.6 });
+    }
+  }
+
+  function renderReplayFrame() {
+    const pts = fullPointsData, n = pts.length;
+    const i = Math.min(Math.floor(replay.pos), n - 2);
+    const f = replay.pos - i;
+    const a = pts[i], b = pts[i + 1];
+
+    const target = f >= 1 ? i + 1 : i;
+    if (replay.passed < target) {
+      while (replay.passed < target) {
+        const k = ++replay.passed;
+        if (replayDots[k]) replayDots[k].setStyle(replayStyleSet.done);
+        replayPlayed.push(L.latLng(pts[k].lat, pts[k].lng));
+      }
+      onReplayAdvanced(replay.passed);
+    }
+
+    const lat = a.lat + (b.lat - a.lat) * f, lng = a.lng + (b.lng - a.lng) * f;
+    const head = L.latLng(lat, lng);
+    const trail = f > 0 && f < 1 ? replayPlayed.concat([head]) : replayPlayed;
+    replayTrail.forEach((l) => l.setLatLngs(trail));
+    replayMover.setLatLng(head);
+    const hEl = replayMover.getElement() && replayMover.getElement().querySelector('.cur-heading');
+    if (hEl && b.bearing != null) {
+      const deg = Math.round(b.bearing);
+      if (hEl._deg !== deg) { hEl._deg = deg; hEl.style.transform = `rotate(${deg}deg)`; }
+    }
+
+    // Timeline + telemetry follow the moving marker
+    timelineSlider.value = replay.pos + 1;
+    timelineSlider.style.setProperty('--pct', `${(replay.pos / (n - 1)) * 100}%`);
+    setText(tlPosition, `Point ${replay.passed + 1} of ${n} · ${fmtClock((n - 1 - replay.pos) * replaySegMs())} left`);
+    const ta = parseTime(a.time), tb = parseTime(b.time), t0 = parseTime(pts[0].time);
+    const tNow = ta !== null && tb !== null ? ta + (tb - ta) * f : ta;
+    setText(tlTime, fmtTime(tNow ?? a.time));
+
+    const sc = speedClass(b.speed);
+    setHTML(speedInfoEl, `${b.speed}<small>km/h</small>`);
+    speedStateEl.className = `speed-state s-${sc}`;
+    setText(speedStateEl, SPEED_LABEL[sc]);
+    const dist = fmtDistance(a.cum + (b.cum - a.cum) * f - pts[0].cum);
+    setHTML(distanceInfoEl, `${dist.v}<small>${dist.u}</small>`);
+    setText(elapsedInfoEl, tNow !== null && t0 !== null ? fmtDuration(tNow - t0) : '—');
+    setHTML(pointsInfoEl, `${replay.passed + 1}<small>/ ${n}</small>`);
+    setText(latestInfoEl, `At ${fmtTime(tNow ?? a.time, false)}`);
+    setHTML(headingInfoEl, b.bearing != null ? `${b.heading}<small>${Math.round(b.bearing)}°</small>` : '—');
+    headingArrow.style.transform = b.bearing != null ? `rotate(${Math.round(b.bearing)}deg)` : '';
+    setText(positionInfoEl, `${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+    setText(statsSummary, `${b.speed} km/h · ${dist.v} ${dist.u}`);
+
+    if (replay.playing) keepInView(head);
+  }
+
+  function replayLoop(ts) {
+    if (!replay || !replay.playing) return;
+    const dt = replay.lastTs === null ? 0 : Math.min(ts - replay.lastTs, 100);   // clamp: no jump after a stalled frame
+    replay.lastTs = ts;
+    const end = fullPointsData.length - 1;
+    replay.pos = Math.min(end, replay.pos + dt / replaySegMs());
+    renderReplayFrame();
+    if (replay.pos >= end) { finishReplay(); return; }
+    replay.raf = requestAnimationFrame(replayLoop);
+  }
+
+  function runReplay() {
+    if (!replay) return;
+    replay.playing = true;
+    replay.lastTs = null;
+    cancelAnimationFrame(replay.raf);
+    replay.raf = requestAnimationFrame(replayLoop);
+    setConn('replay');
+    updatePlayBtn();
+    updateTimelineUI();
+  }
+
+  // Fit the whole route (clear of the overlays), then call cb once the camera settles.
+  function frameRoute(cb) {
+    const bounds = L.latLngBounds(fullPointsData.map((p) => [p.lat, p.lng]));
+    const mobile = isMobile();
+    const statsW = statsPanel.offsetWidth, statsH = statsPanel.offsetHeight;
+    const opts = mobile
+      ? { paddingTopLeft: [24, statsH + 28], paddingBottomRight: [64, 90] }
+      : { paddingTopLeft: [statsW + 48, 48], paddingBottomRight: [80, 100] };
+    let started = false;
+    const go = () => { if (started) return; started = true; map.off('moveend', go); cb(); };
+    map.on('moveend', go);
+    setTimeout(go, 900);   // fallback when the view doesn't need to change
+    map.fitBounds(bounds, { ...opts, maxZoom: 17, animate: true });
+  }
+
+  function startReplay() {
+    const n = fullPointsData.length;
+    if (n < 2) return;
+    if (replay) { runReplay(); return; }   // resume after pause
+
+    // Continue from the scrubbed point, otherwise start from the beginning
+    let startIdx = 0;
+    if (viewIndex !== null && !replayDone && viewIndex < n) startIdx = viewIndex - 1;
+    replayDone = false;
+    setFollow(false);
+    if (isSheetOpen()) setSidebarCollapsed(true);
+
+    replay = { pos: startIdx, playing: false, passed: startIdx, lastTs: null, raf: 0 };
+    viewIndex = startIdx + 1;
+    selectedIdx = startIdx;
+    modeTag.textContent = 'REPLAY';
+    modeTag.className = 'mode-tag replay';
+    buildReplayScene(startIdx);
+    renderReplayFrame();
+    updateTimelineUI();
+    updateVirtualList();
+    scrollListTo(startIdx);
+    setConn('replay');
+
+    replay.playing = true;          // show "playing" state during the camera lead-in
+    updatePlayBtn();
+    updateTimelineUI();
+    const begin = () => { if (replay && replay.playing) runReplay(); };
+    if (startIdx === 0) frameRoute(begin);
+    else { panIfOutside(fullPointsData[startIdx]); begin(); }
+  }
+
+  function pauseReplay() {
+    if (!replay) return;
+    replay.playing = false;
+    cancelAnimationFrame(replay.raf);
+    setConn('paused');
+    updatePlayBtn();
+    updateTimelineUI();
+    renderReplayFrame();
+  }
+
+  // Tear down the replay scene (callers re-render the normal view afterwards)
+  function stopReplay() {
+    if (!replay) return;
+    cancelAnimationFrame(replay.raf);
+    replay = null;
+    replayDots = []; replayPlayed = []; replayMover = null;
+    routeGhost.setLatLngs([]);
+    updatePlayBtn();
+  }
+
+  function finishReplay() {
+    const n = fullPointsData.length;
+    stopReplay();
+    viewIndex = n;                  // hold the history view on the final point
+    replayDone = true;
+    selectedIdx = n - 1;
+    setConn('paused');
+    renderView();
+    scrollListTo(n - 1);
+  }
+
+  function isSheetOpen() { return isMobile() && !sidebar.classList.contains('collapsed'); }
+
+  playBtn.addEventListener('click', () => { if (replay && replay.playing) pauseReplay(); else startReplay(); });
+
+  speedGroup.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-speed]');
+    if (!b) return;
+    replaySpeed = Number(b.dataset.speed);
+    store.set(KEYS.replaySpeed, String(replaySpeed));
+    updateReplayEstimate();
+    if (replay) renderReplayFrame();   // refresh "time left"
+  });
+
+  // Space toggles play/pause (when focus isn't on a control)
+  document.addEventListener('keydown', (e) => {
+    if (e.code !== 'Space' || activeModalClose) return;
+    if (e.target.closest && e.target.closest('input, select, textarea, button, [role="button"], a')) return;
+    if (playBtn.disabled) return;
+    e.preventDefault();
+    playBtn.click();
+  });
+
+  // =========================================================
+  // Sidebar
+  // =========================================================
+  function setSidebarCollapsed(collapsed) {
+    sidebar.classList.toggle('collapsed', collapsed);
+    sidebarToggleBtn.setAttribute('aria-expanded', String(!collapsed));
+    const label = collapsed ? 'Show track log' : 'Hide track log';
+    sidebarToggleBtn.setAttribute('aria-label', label);
+    sidebarToggleBtn.title = label;
+    sidebarToggleBtn.innerHTML = icon(collapsed ? 'chevron-left' : 'chevron-right');
+    if (!isMobile()) {
+      const start = performance.now();
+      requestAnimationFrame(function animate(t) { map.invalidateSize(); if (t - start < 350) requestAnimationFrame(animate); });
+    }
+  }
+  sidebarToggleBtn.addEventListener('click', () => setSidebarCollapsed(!sidebar.classList.contains('collapsed')));
+  sidebarHead.addEventListener('click', () => { if (isMobile()) setSidebarCollapsed(!sidebar.classList.contains('collapsed')); });
+  if (isMobile()) setSidebarCollapsed(true);
+
+  // =========================================================
+  // Geofence
+  // =========================================================
+  function applyZoneStyle(layer) {
+    if (!layer) return;
+    if (layer.setStyle) layer.setStyle({ weight: 2.5, fillOpacity: 0.1 });
+    if (layer._path) layer._path.classList.add('zone-path');
+  }
+
+  function showBreach() {
+    if (breachDismissed) return;
+    breachText.textContent = breachSince ? `Outside the zone since ${fmtTime(breachSince)}.` : 'The asset is outside the zone.';
+    breachBanner.hidden = false;
+  }
+  function hideBreach() { breachBanner.hidden = true; }
+  $('breachDismissBtn').addEventListener('click', () => { breachDismissed = true; hideBreach(); });
+  $('breachLocateBtn').addEventListener('click', centerOnLastPoint);
+
+  function evaluateZone() {
+    if (!geofencePolygon) { setZoneState('none'); hideBreach(); return; }
+    if (dayView) {         // a saved day is on screen; keep the live asset's zone state
+      if (zoneState === 'none') setZoneState('idle');
+      return;
+    }
+    const last = fullPointsData[fullPointsData.length - 1];
+    const path = geofencePolygon._path;
+    if (!last) {
+      setZoneState('idle'); hideBreach();
+      if (path) path.classList.remove('breach');
+      lastWasInside = true; breachSince = null;   // no track → no active breach
+      return;
+    }
+
+    let inside;
+    try {
+      inside = turf.booleanPointInPolygon(turf.point([last.lng, last.lat]), geofencePolygon.toGeoJSON());
+    } catch (err) { console.warn('Geofence check failed', err); return; }
+
+    if (inside) {
+      setZoneState('inside');
+      if (path) path.classList.remove('breach');
+      hideBreach();
+      if (!lastWasInside) {
+        showToast('Asset returned to geofence', `Back inside the zone at ${fmtTime(last.time)}.`, 'success');
+        lastWasInside = true;
+      }
+    } else {
+      setZoneState('outside');
+      if (path) path.classList.add('breach');
+      if (lastWasInside) {
+        showToast('Geofence breach', `Asset left the zone at ${fmtTime(last.time)}.`, 'alert');
+        lastWasInside = false;
+        breachSince = last.time;
+        breachDismissed = false;
+      }
+      showBreach();
+    }
+  }
+
+  function updateZoneMenu() {
+    const has = !!geofencePolygon;
+    editZoneItem.disabled = !has;
+    removeZoneItem.disabled = !has;
+    drawZoneLabel.textContent = has ? 'Redraw zone' : 'Draw zone';
+  }
+
+  function onZoneChanged() {
+    evaluateZone();
+    redrawMap();
+    updateZoneMenu();
+  }
+
+  async function saveGeofence(layer) {
+    geofencePolygon = layer;
+    lastWasInside = true; // reset alert state for a new / edited fence
+    breachDismissed = false;
+    applyZoneStyle(layer);
+    const json = layer.toGeoJSON();
+    store.set(KEYS.geofence, JSON.stringify(json));
+    try {
+      const res = await fetch(ENDPOINTS.geofence, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(json) });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      showToast('Geofence saved', 'Breach alerts are active for this zone.', 'success');
+    } catch (e) {
+      showToast('Saved in this browser only', 'The server could not be reached.', 'warning');
+    }
+    onZoneChanged();
+  }
+
+  function setZoneFromGeoJSON(data) {
+    const layer = L.geoJSON(data).getLayers()[0];
+    if (!layer) return;
+    geofenceLayer.clearLayers();
+    geofenceLayer.addLayer(layer);   // add the polygon itself, not a nested group (keeps editing working)
+    geofencePolygon = layer;
+    lastWasInside = true;
+    applyZoneStyle(layer);
+  }
+
+  async function loadGeofence() {
+    let data = null;
+    try {
+      const res = await fetch(ENDPOINTS.geofence, { cache: 'no-store' });
+      if (res.ok && res.status !== 204) {
+        const text = await res.text();
+        if (text) data = JSON.parse(text);
+      }
+    } catch (e) {
+      const saved = store.get(KEYS.geofence);
+      if (saved) { try { data = JSON.parse(saved); } catch (err) {} }
+    }
+    if (data) setZoneFromGeoJSON(data);
+    updateZoneMenu();
+    evaluateZone();
+  }
+
+  // --- Draw / edit modes (replaces the default Leaflet.Draw toolbar) ---
+  function showZoneBanner(mode) {
+    if (mode === 'draw') {
+      zoneBannerTitle.textContent = 'Drawing geofence';
+      zoneBannerText.textContent = 'Click the map to add points. Click the first point to finish.';
+      zoneBannerActions.innerHTML = `
+        <button class="btn btn-sm" data-zone-act="undo">${icon('undo')}Undo point</button>
+        <button class="btn btn-sm" data-zone-act="cancel">Cancel</button>`;
+    } else {
+      zoneBannerTitle.textContent = 'Editing geofence';
+      zoneBannerText.textContent = 'Drag the handles to reshape the zone.';
+      zoneBannerActions.innerHTML = `
+        <button class="btn btn-sm" data-zone-act="cancel">Cancel</button>
+        <button class="btn btn-sm btn-primary" data-zone-act="save">${icon('check')}Save changes</button>`;
+    }
+    zoneBanner.hidden = false;
+  }
+  function hideZoneBanner() { zoneBanner.hidden = true; }
+
+  zoneBannerActions.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-zone-act]');
+    if (!btn) return;
+    const act = btn.dataset.zoneAct;
+    if (act === 'undo' && drawHandler) drawHandler.deleteLastVertex();
+    else if (act === 'cancel') cancelZoneMode();
+    else if (act === 'save') saveZoneEdit();
+  });
+
+  function startDraw() {
+    stopAddMode();
+    cancelZoneMode();
+    drawHandler = new L.Draw.Polygon(map, {
+      allowIntersection: false, showArea: false,
+      shapeOptions: { color: cssVar('--accent'), weight: 2.5, fillOpacity: 0.1 }
+    });
+    zoneMode = 'draw';
+    drawHandler.enable();
+    showZoneBanner('draw');
+  }
+
+  function startEdit() {
+    if (!geofencePolygon) { showToast('No zone to edit', 'Draw a geofence first.', 'info'); return; }
+    stopAddMode();
+    cancelZoneMode();
+    editHandler = new L.EditToolbar.Edit(map, {
+      featureGroup: geofenceLayer,
+      selectedPathOptions: { dashArray: '8, 6', maintainColor: true, fill: true, fillOpacity: 0.08 }
+    });
+    zoneMode = 'edit';
+    editHandler.enable();
+    showZoneBanner('edit');
+  }
+
+  function cancelZoneMode() {
+    const mode = zoneMode, dh = drawHandler, eh = editHandler;
+    zoneMode = null; drawHandler = null; editHandler = null;
+    hideZoneBanner();
+    if (mode === 'draw' && dh) dh.disable();
+    if (mode === 'edit' && eh) { eh.revertLayers(); eh.disable(); applyZoneStyle(geofencePolygon); }
+  }
+
+  function saveZoneEdit() {
+    if (zoneMode !== 'edit' || !editHandler) return;
+    const eh = editHandler;
+    zoneMode = null; editHandler = null;
+    hideZoneBanner();
+    eh.save();      // fires L.Draw.Event.EDITED
+    eh.disable();
+    applyZoneStyle(geofencePolygon);
+  }
+
+  map.on(L.Draw.Event.CREATED, (e) => {
+    geofenceLayer.clearLayers();
+    geofenceLayer.addLayer(e.layer);
+    saveGeofence(e.layer);
+  });
+  map.on(L.Draw.Event.EDITED, (e) => {
+    if (e.layers && e.layers.getLayers().length) geofenceLayer.eachLayer((ly) => saveGeofence(ly));
+    else showToast('No changes', 'The geofence was not modified.', 'info');
+  });
+  map.on(L.Draw.Event.DRAWSTOP, () => {
+    if (zoneMode === 'draw') { zoneMode = null; drawHandler = null; hideZoneBanner(); }
+  });
+
+  async function removeZone() {
+    if (!geofencePolygon) return;
+    const ok = await confirmDialog({
+      title: 'Remove geofence?',
+      message: 'Breach alerts will stop until a new zone is drawn.',
+      confirmLabel: 'Remove zone',
+      iconName: 'fence'
+    });
+    if (!ok) return;
+    cancelZoneMode();
+    geofenceLayer.clearLayers();
+    geofencePolygon = null;
+    lastWasInside = true;
+    store.remove(KEYS.geofence);
+    fetch(ENDPOINTS.geofence, { method: 'DELETE' }).catch(() => {});
+    onZoneChanged();
+    showToast('Geofence removed', 'Breach alerts are off.', 'info');
+  }
+
+  geofenceMenu.addEventListener('click', (e) => {
+    const item = e.target.closest('[data-zone]');
+    if (!item || item.disabled) return;
+    closeMenus();
+    closeMobileMenu();
+    const act = item.dataset.zone;
+    if (act === 'draw') startDraw();
+    else if (act === 'edit') startEdit();
+    else if (act === 'remove') removeZone();
+  });
+
+  // =========================================================
+  // Data sync — incremental. The first request loads the latest LIVE_WINDOW points; every poll
+  // after that asks only for points newer than the last id we have (?after=<id>), so an idle
+  // poll returns []. If the server's data epoch changes (history cleared), the window is reloaded.
+  // =========================================================
+  async function fetchPoints(query = '') {
+    const res = await fetch(ENDPOINTS.locations + query, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const pts = await res.json();
+    if (!Array.isArray(pts)) throw new Error('Unexpected response');
+    return {
+      pts,
+      epoch: res.headers.get('X-Data-Epoch'),
+      lastId: Number(res.headers.get('X-Last-Id')) || 0,
+      truncated: res.headers.get('X-Truncated') === '1'
+    };
+  }
+
+  function appendPoint(raw) {
+    const lat = Number(raw.latitude), lng = Number(raw.longitude);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+    const prev = fullPointsData[fullPointsData.length - 1];
+    let speed = '0.0', heading = '-', bearing = null, cum = 0;
+    if (prev) {
+      const d = turf.distance(turf.point([prev.lng, prev.lat]), turf.point([lng, lat]));
+      cum = prev.cum + d;
+      const hrs = ((parseTime(raw.time) ?? NaN) - (parseTime(prev.time) ?? NaN)) / 3600000;
+      if (hrs > 0) speed = (d / hrs).toFixed(1);
+      bearing = computeBearing([prev.lat, prev.lng], [lat, lng]);
+      heading = getHeadingString(bearing);
+    }
+    fullPointsData.push({ id: raw.id, lat, lng, time: raw.time, speed, heading, bearing, cum });
+  }
+
+  function resetPoints() {
+    fullPointsData = [];
+    selectedIdx = null;
+  }
+
+  function trimLiveWindow() {
+    const extra = fullPointsData.length - LIVE_WINDOW;
+    if (extra <= 0) return;
+    fullPointsData = fullPointsData.slice(extra);
+    if (selectedIdx !== null) { selectedIdx -= extra; if (selectedIdx < 0) selectedIdx = null; }
+  }
+
+  // Network part only — nothing on screen changes until applyLiveUpdate()
+  async function fetchLiveUpdate() {
+    if (liveEpoch !== null) {
+      const r = await fetchPoints(`?after=${liveLastId}`);
+      if (r.epoch === liveEpoch) return { reset: false, r };
+    }
+    return { reset: true, r: await fetchPoints(`?limit=${LIVE_WINDOW}`) };
+  }
+
+  // Returns true if the live points changed
+  function applyLiveUpdate({ reset, r }) {
+    if (reset) {
+      resetPoints();
+      r.pts.forEach(appendPoint);
+      liveEpoch = r.epoch;
+      liveLastId = r.lastId;
+    } else {
+      if (!r.pts.length) return false;
+      r.pts.forEach(appendPoint);
+      liveLastId = r.pts[r.pts.length - 1].id;
+      trimLiveWindow();
+    }
+    liveLatest = fullPointsData[fullPointsData.length - 1] || null;
+    return true;
+  }
+
+  async function fetchAndUpdate() {
+    if (dayView || viewIndex !== null) {
+      setConn(replay && replay.playing ? 'replay' : dayView ? 'archive' : 'paused');
+      return;
+    }
+    const gen = dataGeneration;
+    let update;
+    try {
+      update = await fetchLiveUpdate();
+    } catch (err) {
+      if (viewIndex === null && !dayView) setConn('offline');
+      return;
+    }
+    // Dataset switched or user went into history meanwhile — drop it; the next poll catches up from liveLastId
+    if (gen !== dataGeneration || viewIndex !== null || dayView) return;
+
+    const hadPoints = fullPointsData.length > 0;
+    const changed = applyLiveUpdate(update);
+    setConn(liveConnState());
+    if (!changed) return;
+
+    evaluateZone();
+    renderView();
+    setFollow(followEnabled);
+
+    const last = fullPointsData[fullPointsData.length - 1];
+    if (last && followEnabled) {
+      if (!hadPoints) map.setView([last.lat, last.lng], Math.max(map.getZoom(), 15), { animate: false });
+      else map.panTo([last.lat, last.lng], { animate: true });
+    }
+    tick();
+  }
+
+  // =========================================================
+  // History — every point is kept on the server; pick a saved day to view or replay it
+  // =========================================================
+  function dayLabel(key) {
+    const [y, m, d] = key.split('-').map(Number);
+    const date = new Date(y, m - 1, d);
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const diff = Math.round((today - date) / 86400000);
+    if (diff === 0) return 'Today';
+    if (diff === 1) return 'Yesterday';
+    return date.toLocaleDateString([], {
+      weekday: 'short', day: 'numeric', month: 'short',
+      year: date.getFullYear() !== today.getFullYear() ? 'numeric' : undefined
+    });
+  }
+
+  function updateHistoryBtn() {
+    historyBtnLabel.textContent = dayView ? dayView.label : 'Live';
+    historyBtn.classList.toggle('is-active', !!dayView);
+  }
+
+  function renderHistoryMenu(days, error) {
+    const liveItem = `
+      <button class="menu-item${dayView ? '' : ' selected'}" role="menuitemradio" aria-checked="${!dayView}" data-history="live">
+        ${icon('radio')}<span>Live<small>Latest ${LIVE_WINDOW.toLocaleString()} points, updates automatically</small></span>${icon('check', 'check')}
+      </button>`;
+    // Saved days from the server + the built-in demo day (from the project file), newest first
+    const entries = (days || []).map((d, i) => ({ ...d, key: String(i) }));
+    if (demoDay) entries.push({ ...demoDay, key: 'demo' });
+    entries.sort((a, b) => b.day.localeCompare(a.day));
+    let list = entries.map((d) => {
+      const on = !!dayView && (d.key === 'demo' ? !!dayView.demo : !dayView.demo && dayView.day === d.day);
+      return `
+        <button class="menu-item${on ? ' selected' : ''}" role="menuitemradio" aria-checked="${on}" data-history="${d.key}">
+          ${icon('calendar')}<span>${escapeHtml(dayLabel(d.day))}<small>${d.count.toLocaleString()} ${d.count === 1 ? 'point' : 'points'} · ${escapeHtml(fmtTime(d.first, false))}–${escapeHtml(fmtTime(d.last, false))}</small></span>${icon('check', 'check')}
+        </button>`;
+    }).join('');
+    if (error) list += '<div class="menu-note">Could not load saved days.</div>';
+    else if (!days) list += '<div class="menu-note">Loading…</div>';
+    else if (!entries.length) list = '<div class="menu-note">No saved history yet.</div>';
+    historyMenu.innerHTML = `
+      <div class="menu-title">View</div>${liveItem}
+      <div class="menu-sep"></div>
+      <div class="menu-title">Saved days</div>
+      <div class="day-list">${list}</div>`;
+  }
+
+  let historyDays = [];
+  historyBtn.addEventListener('click', async (e) => {
+    e.stopPropagation();                       // the header also toggles the mobile sheet
+    if (isMobile()) setSidebarCollapsed(false);
+    const opening = !historyMenu.classList.contains('open');
+    renderHistoryMenu(null);
+    toggleMenu(historyBtn, historyMenu);
+    if (!opening) return;
+    try {
+      const res = await fetch(`${ENDPOINTS.locations}/days`, { cache: 'no-store' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      historyDays = await res.json();
+      renderHistoryMenu(historyDays);
+    } catch (err) {
+      renderHistoryMenu(null, true);
+    }
+  });
+  historyMenu.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const item = e.target.closest('[data-history]');
+    if (!item) return;
+    closeMenus();
+    if (item.dataset.history === 'live') { if (dayView) returnToLive(); return; }
+    if (item.dataset.history === 'demo') { openDemoView(); return; }
+    const d = historyDays[Number(item.dataset.history)];
+    if (d) openDay(d);
+  });
+
+  async function openDay(d) {
+    let r;
+    try {
+      r = await fetchPoints(`?from=${d.from}&to=${d.to}`);
+    } catch (err) {
+      showToast('Could not load history', 'The server did not respond. Please try again.', 'alert');
+      return;
+    }
+    showSavedView({ ...d, label: dayLabel(d.day) }, r.pts);
+    if (r.truncated) showToast('Showing part of this day', `Only the first ${r.pts.length.toLocaleString()} points were loaded.`, 'warning');
+  }
+
+  // Put a fixed set of points on screen (a saved day or the demo route); live polling pauses
+  function showSavedView(view, pts) {
+    dataGeneration++;
+    stopReplay();
+    dayView = view;
+    resetPoints();
+    pts.forEach(appendPoint);
+    viewIndex = null;
+    replayDone = false;
+    setFollow(false);
+    setConn('archive');
+    updateHistoryBtn();
+    renderView();
+    dataListContainer.scrollTop = 0;
+    updateVirtualList();
+    fitToPoints(fullPointsData.map((p) => [p.lat, p.lng]));
+  }
+
+  // The demo day (Genpact Sarhol ⇄ Sikandarpur Metro) is read from public/demo/demo-route.json —
+  // not from the database — so it is always listed in History under its own date (e.g. "Thu, 1 Oct"),
+  // after a server restart, on Render and after "Clear track". It is also the view shown on page load.
+  let demoDay = null;   // { day, count, first, last, points }
+
+  async function getDemoDay() {
+    if (demoDay) return demoDay;
+    const res = await fetch(DEMO_ROUTE_URL, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const { points } = normalizePoints(await res.json());
+    if (!points.length) throw new Error('The demo file has no valid points');
+    const times = points.map((p) => parseTime(p.time)).filter((t) => t !== null);
+    const first = times.length ? new Date(Math.min(...times)) : new Date();
+    const last = times.length ? new Date(Math.max(...times)) : first;
+    const day = `${first.getFullYear()}-${String(first.getMonth() + 1).padStart(2, '0')}-${String(first.getDate()).padStart(2, '0')}`;
+    demoDay = { day, count: points.length, first: first.toISOString(), last: last.toISOString(), points };
+    return demoDay;
+  }
+
+  async function openDemoView() {
+    let d;
+    try { d = await getDemoDay(); }
+    catch (err) { showToast('Demo day not found', `Could not load ${DEMO_ROUTE_URL}.`, 'alert'); return false; }
+    showSavedView({ day: d.day, label: dayLabel(d.day), demo: true }, d.points);
+    return true;
+  }
+
+  // Fit a set of [lat, lng] points on screen, clear of the telemetry panel and controls
+  function fitToPoints(coords, animate = false) {
+    if (!coords.length) return;
+    const pad = isMobile()
+      ? { paddingTopLeft: [24, statsPanel.offsetHeight + 28], paddingBottomRight: [64, 90] }
+      : { paddingTopLeft: [statsPanel.offsetWidth + 48, 48], paddingBottomRight: [80, 100] };
+    map.fitBounds(L.latLngBounds(coords), { ...pad, maxZoom: 17, animate });
+  }
+
+  function returnToLive() {
+    dataGeneration++;
+    stopReplay();
+    dayView = null;
+    viewIndex = null;
+    replayDone = false;
+    resetPoints();
+    liveEpoch = null;          // reload the live window on the next poll
+    updateHistoryBtn();
+    setConn('connecting');
+    setFollow(true);           // first live poll centres on the asset
+    dataListContainer.scrollTop = 0;   // newest point at the top again
+    renderView();
+    kickPoll();
+  }
+
+  // =========================================================
+  // Test data — add points by clicking or typing, import JSON files or the demo route, download JSON.
+  // Everything added is POSTed to /api/location exactly like the ESP32, so it is stored on the
+  // server and shows up in Live and in History.
+  // =========================================================
+  const testMenuBtn = $('testMenuBtn'), testMenu = $('testMenu'), fileInput = $('fileInput');
+  const toolBanner = $('toolBanner'), toolBannerIcon = $('toolBannerIcon'), toolBannerTitle = $('toolBannerTitle');
+  const toolBannerText = $('toolBannerText'), toolBannerActions = $('toolBannerActions');
+  const toolProgress = $('toolProgress'), toolProgressBar = $('toolProgressBar');
+  const entryModal = $('entryModal'), entryForm = $('entryForm'), entryLat = $('entryLat'), entryLng = $('entryLng');
+  const entryTime = $('entryTime'), entryMsg = $('entryMsg'), entrySubmit = $('entrySubmit');
+  const dropOverlay = $('dropOverlay'), mapWrap = document.querySelector('.map-wrap');
+  const DEMO_ROUTE_URL = 'demo/demo-route.json';   // History: the built-in "Thu, 1 Oct" day
+  const TEST_ROUTE_URL = 'demo/test-route.json';   // Test data ▸ Load demo route (sent to the server, ends now)
+
+  async function postPoint(p) {
+    const res = await fetch(ENDPOINTS.locations, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p) });
+    if (!res.ok) {
+      let msg = `HTTP ${res.status}`;
+      try { msg = (await res.json()).error || msg; } catch (e) {}
+      throw new Error(msg);
+    }
+  }
+
+  // New points are live points — make sure the live view is on screen
+  function ensureLiveView() {
+    if (dayView) returnToLive();
+    else if (viewIndex !== null) goLive();
+  }
+
+  function isToday(ts) {
+    const d = new Date(ts), now = new Date();
+    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+  }
+
+  function showToolBanner({ iconName, title, text, actions, progress = null }) {
+    toolBannerIcon.setAttribute('href', `#i-${iconName}`);
+    toolBannerTitle.textContent = title;
+    toolBannerText.textContent = text;
+    toolBannerActions.innerHTML = actions;
+    toolProgress.hidden = progress === null;
+    if (progress !== null) toolProgressBar.style.width = `${Math.round(progress * 100)}%`;
+    toolBanner.hidden = false;
+  }
+  function hideToolBanner() { toolBanner.hidden = true; }
+
+  toolBannerActions.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-tool-act]');
+    if (!b) return;
+    if (b.dataset.toolAct === 'done') stopAddMode();
+    else if (b.dataset.toolAct === 'cancel-import') importCancelled = true;
+  });
+
+  // ---- Click on the map to add points ----
+  let addedCount = 0;
+
+  function startAddMode() {
+    if (toolMode) return;
+    cancelZoneMode();
+    ensureLiveView();
+    setFollow(false);                 // keep the map still while clicking
+    toolMode = 'add';
+    addedCount = 0;
+    $('map').classList.add('adding-points');
+    map.doubleClickZoom.disable();    // a double-click would otherwise add two points and zoom
+    map.on('click', onAddClick);
+    updateAddBanner();
+  }
+
+  function stopAddMode() {
+    if (toolMode !== 'add') return;
+    toolMode = null;
+    map.off('click', onAddClick);
+    map.doubleClickZoom.enable();
+    $('map').classList.remove('adding-points');
+    hideToolBanner();
+    if (addedCount) showToast('Points added', `${addedCount} ${addedCount === 1 ? 'point was' : 'points were'} saved and appear in History.`, 'success');
+  }
+
+  function updateAddBanner() {
+    showToolBanner({
+      iconName: 'pointer',
+      title: 'Adding points',
+      text: addedCount ? `${addedCount} added · click the map to add more` : 'Click anywhere on the map to send a point',
+      actions: `<button class="btn btn-sm btn-primary" data-tool-act="done">${icon('check')}Done</button>`
+    });
+  }
+
+  async function onAddClick(e) {
+    const ll = e.latlng.wrap();
+    try {
+      await postPoint({ latitude: +ll.lat.toFixed(6), longitude: +ll.lng.toFixed(6) });
+      addedCount++;
+      if (toolMode === 'add') updateAddBanner();
+      kickPoll();
+    } catch (err) {
+      showToast('Could not add point', err.message, 'alert');
+    }
+  }
+
+  // ---- Enter coordinates ----
+  let entryCount = 0;
+
+  function toLocalInput(ts) {
+    const d = new Date(ts), p = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  }
+  function showEntryMsg(text, kind) {
+    entryMsg.innerHTML = `${icon(kind === 'ok' ? 'check-circle' : 'alert')}<span>${escapeHtml(text)}</span>`;
+    entryMsg.className = `form-msg ${kind}`;
+    entryMsg.hidden = false;
+  }
+
+  // ---- Date & time picker (styled replacement for the browser's datetime-local) ----
+  // The chosen value lives in the hidden #entryTime as "YYYY-MM-DDTHH:MM:SS" (local time); empty = now.
+  const dtTrigger = $('dtTrigger'), dtText = $('dtTriggerText'), dtClear = $('dtClear'), dtPop = $('dtPop');
+  const dtMonth = $('dtMonth'), dtGrid = $('dtGrid');
+  const dtInputs = { h: $('dtH'), m: $('dtM'), s: $('dtS') };
+  let dtView = { y: 0, m: 0 };     // month on screen
+  let dtDraft = new Date();        // date + time being edited (applied on Done)
+  let dtClosedAt = 0;
+
+  const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const sameDay = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  const dayKey = (d) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+  const pad2 = (n) => String(n).padStart(2, '0');
+
+  function setDtValue(v) {
+    entryTime.value = v;
+    const d = v ? new Date(v) : null;
+    const valid = d && !Number.isNaN(d.getTime());
+    dtText.textContent = valid
+      ? `${d.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })} · ${fmtTime(d.getTime())}`
+      : 'Current time';
+    dtText.classList.toggle('placeholder', !valid);
+    dtClear.hidden = !valid;
+  }
+
+  function openDtPicker() {
+    const v = entryTime.value ? new Date(entryTime.value) : new Date();
+    dtDraft = Number.isNaN(v.getTime()) ? new Date() : v;
+    dtView = { y: dtDraft.getFullYear(), m: dtDraft.getMonth() };
+    renderDtGrid();
+    syncDtTime();
+    dtPop.hidden = false;
+    dtTrigger.setAttribute('aria-expanded', 'true');
+    placeDtPop();
+    focusDtDay();
+  }
+
+  function closeDtPicker(returnFocus = true) {
+    if (dtPop.hidden) return;
+    dtPop.hidden = true;
+    dtTrigger.setAttribute('aria-expanded', 'false');
+    dtClosedAt = performance.now();
+    if (returnFocus) dtTrigger.focus();
+  }
+
+  // Below the field, or above it when there isn't room; kept inside the viewport
+  function placeDtPop() {
+    const r = dtTrigger.getBoundingClientRect(), w = dtPop.offsetWidth, h = dtPop.offsetHeight, gap = 6, m = 8;
+    let top = r.bottom + gap;
+    if (top + h > window.innerHeight - m) top = Math.max(m, r.top - h - gap);
+    dtPop.style.top = `${top}px`;
+    dtPop.style.left = `${clamp(r.left, m, window.innerWidth - w - m)}px`;
+  }
+
+  function renderDtGrid() {
+    const { y, m } = dtView;
+    const today = startOfDay(new Date());
+    dtMonth.textContent = new Date(y, m, 1).toLocaleDateString([], { month: 'long', year: 'numeric' });
+    const first = new Date(y, m, 1);
+    let html = '';
+    for (let i = 0; i < 42; i++) {   // always 6 weeks, so the popover doesn't change height
+      const d = new Date(y, m, 1 - first.getDay() + i);
+      const selected = sameDay(d, dtDraft);
+      const cls = ['dt-day'];
+      if (d.getMonth() !== m) cls.push('other');
+      if (sameDay(d, today)) cls.push('today');
+      if (selected) cls.push('selected');
+      html += `<button type="button" class="${cls.join(' ')}" data-day="${dayKey(d)}" tabindex="${selected ? 0 : -1}"${d > today ? ' disabled' : ''}
+        aria-pressed="${selected}" aria-label="${d.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}">${d.getDate()}</button>`;
+    }
+    dtGrid.innerHTML = html;
+    dtPop.querySelector('[data-dt="next"]').disabled = y > today.getFullYear() || (y === today.getFullYear() && m >= today.getMonth());
+  }
+
+  function focusDtDay() {
+    const b = dtGrid.querySelector(`[data-day="${dayKey(dtDraft)}"]`);
+    if (b) b.focus();
+  }
+
+  // Move the selection to another day (keeps the time); switches month when needed
+  function selectDtDay(d) {
+    if (d > startOfDay(new Date())) return;   // no future dates
+    dtDraft = new Date(d.getFullYear(), d.getMonth(), d.getDate(), dtDraft.getHours(), dtDraft.getMinutes(), dtDraft.getSeconds());
+    dtView = { y: d.getFullYear(), m: d.getMonth() };
+    renderDtGrid();
+    focusDtDay();
+  }
+
+  function syncDtTime() {
+    dtInputs.h.value = pad2(dtDraft.getHours());
+    dtInputs.m.value = pad2(dtDraft.getMinutes());
+    dtInputs.s.value = pad2(dtDraft.getSeconds());
+  }
+
+  function setDtUnit(unit, value, wrap) {
+    const size = unit === 'h' ? 24 : 60;
+    const v = wrap ? ((value % size) + size) % size : clamp(value, 0, size - 1);
+    if (unit === 'h') dtDraft.setHours(v); else if (unit === 'm') dtDraft.setMinutes(v); else dtDraft.setSeconds(v);
+    syncDtTime();
+  }
+  const dtUnitValue = (unit) => (unit === 'h' ? dtDraft.getHours() : unit === 'm' ? dtDraft.getMinutes() : dtDraft.getSeconds());
+
+  function applyDt() {
+    if (dtDraft.getTime() > Date.now()) dtDraft = new Date();   // a time later today becomes "now"
+    setDtValue(toLocalInput(dtDraft.getTime()));
+    closeDtPicker();
+  }
+
+  dtTrigger.addEventListener('click', () => { if (dtPop.hidden) openDtPicker(); else closeDtPicker(); });
+  dtClear.addEventListener('click', () => { setDtValue(''); dtTrigger.focus(); });
+
+  dtPop.addEventListener('click', (e) => {
+    const day = e.target.closest('[data-day]');
+    if (day && !day.disabled) {
+      const [y, m, d] = day.dataset.day.split('-').map(Number);
+      selectDtDay(new Date(y, m, d));
+      return;
+    }
+    const step = e.target.closest('[data-step]');
+    if (step) { setDtUnit(step.dataset.unit, dtUnitValue(step.dataset.unit) + Number(step.dataset.step), true); return; }
+    const act = e.target.closest('[data-dt]');
+    if (!act || act.disabled) return;
+    switch (act.dataset.dt) {
+      case 'prev': dtView = { y: dtView.m === 0 ? dtView.y - 1 : dtView.y, m: (dtView.m + 11) % 12 }; renderDtGrid(); break;
+      case 'next': dtView = { y: dtView.m === 11 ? dtView.y + 1 : dtView.y, m: (dtView.m + 1) % 12 }; renderDtGrid(); break;
+      case 'clear': setDtValue(''); closeDtPicker(); break;
+      case 'now': dtDraft = new Date(); applyDt(); break;
+      case 'apply': applyDt(); break;
+    }
+  });
+  dtGrid.addEventListener('dblclick', (e) => { if (e.target.closest('[data-day]:not(:disabled)')) applyDt(); });
+
+  // Keyboard: arrows move the day, Enter applies, Esc closes only the picker
+  dtPop.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { e.stopPropagation(); closeDtPicker(); return; }
+    if (e.target.closest('.dt-grid')) {
+      const moves = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 };
+      if (e.key in moves) {
+        e.preventDefault();
+        selectDtDay(new Date(dtDraft.getFullYear(), dtDraft.getMonth(), dtDraft.getDate() + moves[e.key]));
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        applyDt();
+      }
+    }
+  });
+
+  Object.values(dtInputs).forEach((input) => {
+    const unit = input.dataset.unit;
+    input.addEventListener('input', () => { input.value = input.value.replace(/\D/g, '').slice(0, 2); });
+    input.addEventListener('change', () => setDtUnit(unit, Number(input.value) || 0, false));
+    input.addEventListener('blur', () => syncDtTime());
+    input.addEventListener('focus', () => input.select());
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        setDtUnit(unit, dtUnitValue(unit) + (e.key === 'ArrowUp' ? 1 : -1), true);
+        input.select();
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        setDtUnit(unit, Number(input.value) || 0, false);
+        applyDt();
+      }
+    });
+    input.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      setDtUnit(unit, dtUnitValue(unit) + (e.deltaY < 0 ? 1 : -1), true);
+    }, { passive: false });
+  });
+
+  // Click outside closes the picker without applying; so does resizing the window
+  document.addEventListener('pointerdown', (e) => {
+    if (!dtPop.hidden && !dtPop.contains(e.target) && !e.target.closest('#dtTrigger')) closeDtPicker(false);
+  }, true);
+  window.addEventListener('resize', () => closeDtPicker(false));
+
+  function openEntry() {
+    if (toolMode === 'import') return;
+    stopAddMode();
+    ensureLiveView();
+    entryForm.reset();
+    setDtValue('');
+    entryMsg.hidden = true;
+    entryLat.classList.remove('invalid');
+    entryLng.classList.remove('invalid');
+    entryCount = 0;
+    entryModal.hidden = false;
+    entryLat.focus();
+    activeModalClose = closeEntry;
+  }
+  function closeEntry() {
+    closeDtPicker(false);
+    entryModal.hidden = true;
+    activeModalClose = null;
+  }
+  $('entryClose').addEventListener('click', closeEntry);
+  $('entryCloseX').addEventListener('click', closeEntry);
+  $('entryNow').addEventListener('click', () => { closeDtPicker(false); setDtValue(toLocalInput(Date.now())); });
+  entryModal.addEventListener('click', (e) => {
+    if (e.target !== entryModal) return;
+    if (performance.now() - dtClosedAt < 400) return;   // that click only closed the date picker
+    closeEntry();
+  });
+
+  // Pasting "28.99254, 77.99993" into Latitude fills both fields
+  entryLat.addEventListener('input', () => {
+    const m = entryLat.value.match(/^\s*(-?\d+(?:\.\d+)?)\s*[,;\s]\s*(-?\d+(?:\.\d+)?)\s*$/);
+    if (m) { entryLat.value = m[1]; entryLng.value = m[2]; entryLng.focus(); }
+  });
+
+  entryForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const latText = entryLat.value.trim(), lngText = entryLng.value.trim();
+    const lat = Number(latText), lng = Number(lngText);
+    const badLat = !latText || !Number.isFinite(lat) || lat < -90 || lat > 90;
+    const badLng = !lngText || !Number.isFinite(lng) || lng < -180 || lng > 180;
+    entryLat.classList.toggle('invalid', badLat);
+    entryLng.classList.toggle('invalid', badLng);
+    if (badLat || badLng) { showEntryMsg('Latitude must be between -90 and 90, longitude between -180 and 180.', 'err'); return; }
+
+    const point = { latitude: lat, longitude: lng };
+    let ts = null;
+    if (entryTime.value) {
+      ts = new Date(entryTime.value).getTime();
+      if (!Number.isFinite(ts)) { showEntryMsg('The date & time is not valid.', 'err'); return; }
+      point.time = new Date(ts).toISOString();
+    }
+
+    entrySubmit.disabled = true;
+    try {
+      await postPoint(point);
+      entryCount++;
+      showEntryMsg(`Added ${lat.toFixed(5)}, ${lng.toFixed(5)}${ts !== null ? ` at ${fmtTime(ts)}` : ''} · ${entryCount} added so far`, 'ok');
+      entryLat.value = '';
+      entryLng.value = '';
+      if (ts !== null) setDtValue(toLocalInput(ts + 10000));   // next point 10 s later
+      entryLat.focus();
+      kickPoll();
+    } catch (err) {
+      showEntryMsg(`Could not add point: ${err.message}`, 'err');
+    } finally {
+      entrySubmit.disabled = false;
+    }
+  });
+
+  // ---- Import JSON files / demo route ----
+  // Accepts [{ latitude, longitude, time? }, …] (also lat/lng/lon, or { "points": [...] }) — the same
+  // format "Download" produces.
+  function normalizePoints(data) {
+    const list = Array.isArray(data) ? data : (data && Array.isArray(data.points) ? data.points : null);
+    if (!list) throw new Error('Expected a JSON array of points');
+    const points = [];
+    let skipped = 0;
+    for (const p of list) {
+      const lat = Number(p?.latitude ?? p?.lat), lng = Number(p?.longitude ?? p?.lng ?? p?.lon);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) { skipped++; continue; }
+      const point = { latitude: lat, longitude: lng };
+      const ts = p?.time != null ? parseTime(p.time) : null;
+      if (ts !== null) point.time = new Date(ts).toISOString();
+      points.push(point);
+    }
+    return { points, skipped };
+  }
+
+  function daySummary(points) {
+    if (!points.every((p) => p.time)) return '';
+    const counts = new Map();
+    points.forEach((p) => {
+      const d = new Date(p.time);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      counts.set(key, (counts.get(key) || 0) + 1);
+    });
+    const parts = [...counts].slice(0, 4).map(([k, n]) => `${dayLabel(k)}: ${n.toLocaleString()}`);
+    return ` (${parts.join(', ')}${counts.size > 4 ? ', …' : ''})`;
+  }
+
+  async function importFiles(fileList) {
+    if (toolMode === 'import') { showToast('Import in progress', 'Wait for the current import to finish.', 'info'); return; }
+    const files = [...fileList].filter((f) => /\.json$/i.test(f.name) || f.type === 'application/json');
+    if (!files.length) { showToast('No JSON files', 'Choose one or more .json files.', 'warning'); return; }
+
+    let points = [], skipped = 0;
+    const bad = [];
+    for (const f of files) {
+      try {
+        const r = normalizePoints(JSON.parse(await f.text()));
+        points = points.concat(r.points);
+        skipped += r.skipped;
+      } catch (err) { bad.push(f.name); }
+    }
+    if (bad.length) showToast('Some files were skipped', `${bad.join(', ')} ${bad.length === 1 ? 'is' : 'are'} not valid track JSON.`, 'warning');
+    if (!points.length) { showToast('Nothing to import', 'No valid points were found.', 'warning'); return; }
+
+    const label = files.length === 1 ? files[0].name : `${files.length} files`;
+    const ok = await confirmDialog({
+      title: `Import ${points.length.toLocaleString()} ${points.length === 1 ? 'point' : 'points'}?`,
+      message: `From ${label}${skipped ? ` — ${skipped} invalid ${skipped === 1 ? 'entry' : 'entries'} skipped` : ''}. ` +
+        `They are saved on the server like device points and appear in Live and History${daySummary(points)}.`,
+      confirmLabel: 'Import',
+      iconName: 'upload',
+      tone: 'primary'
+    });
+    if (ok) await importPoints(points, label);
+  }
+
+  let importCancelled = false;
+
+  async function importPoints(input, label) {
+    if (toolMode === 'import') { showToast('Import in progress', 'Wait for the current import to finish.', 'info'); return 0; }
+    stopAddMode();
+    cancelZoneMode();
+    ensureLiveView();
+
+    // Points are stored in the order they arrive, so send timed points in time order
+    const timed = input.every((p) => p.time);
+    const points = timed ? input.slice().sort((a, b) => Date.parse(a.time) - Date.parse(b.time)) : input;
+
+    toolMode = 'import';
+    importCancelled = false;
+    setFollow(true);                  // watch the track come in
+    let sent = 0, failedInRow = 0, failed = 0;
+    const update = () => showToolBanner({
+      iconName: 'upload',
+      title: `Importing ${label}`,
+      text: `${sent.toLocaleString()} of ${points.length.toLocaleString()} points`,
+      actions: '<button class="btn btn-sm" data-tool-act="cancel-import">Cancel</button>',
+      progress: sent / points.length
+    });
+    update();
+    for (const p of points) {
+      if (importCancelled) break;
+      try {
+        await postPoint(p);
+        sent++;
+        failedInRow = 0;
+      } catch (err) {
+        failed++;
+        if (++failedInRow >= 3) break;   // server unreachable — stop instead of failing every point
+      }
+      update();
+    }
+    toolMode = null;
+    hideToolBanner();
+    kickPoll();
+
+    if (!sent) { showToast('Import failed', 'The server did not accept the points. Please try again.', 'alert'); return 0; }
+    if (importCancelled || failedInRow >= 3) {
+      showToast('Import stopped', `${sent.toLocaleString()} of ${points.length.toLocaleString()} points were saved.`, 'warning');
+      return sent;
+    }
+
+    // A file with only past days: open that day in History (the live view shows the latest points)
+    const lastTs = timed ? Date.parse(points[sent - 1].time) : null;
+    if (timed && !points.slice(0, sent).some((p) => isToday(Date.parse(p.time))) && await openDayContaining(lastTs)) {
+      showToast('Import complete', `${sent.toLocaleString()} points saved${failed ? `, ${failed} failed` : ''} · opened ${dayView.label} in History.`, 'success');
+    } else {
+      setFollow(false);               // show the whole imported route instead of the last point
+      fitToPoints(points.slice(0, sent).map((p) => [p.latitude, p.longitude]), true);
+      showToast('Import complete', `${sent.toLocaleString()} points saved${failed ? `, ${failed} failed` : ''} · also listed under History.`, 'success');
+    }
+    return sent;
+  }
+
+  async function openDayContaining(ts) {
+    try {
+      const res = await fetch(`${ENDPOINTS.locations}/days`, { cache: 'no-store' });
+      if (!res.ok) return false;
+      const days = await res.json();
+      const d = days.find((x) => ts >= x.from && ts < x.to);
+      if (!d) return false;
+      historyDays = days;
+      await openDay(d);
+      return true;
+    } catch (err) { return false; }
+  }
+
+  async function loadDemoRoute() {
+    if (toolMode === 'import') { showToast('Import in progress', 'Wait for the current import to finish.', 'info'); return; }
+    let data;
+    try {
+      const res = await fetch(TEST_ROUTE_URL, { cache: 'no-store' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      data = await res.json();
+    } catch (err) {
+      showToast('Demo route not found', `Could not load ${TEST_ROUTE_URL}.`, 'alert');
+      return;
+    }
+    const { points } = normalizePoints(data);
+    if (!points.length) { showToast('Demo route is empty', 'The demo file has no valid points.', 'warning'); return; }
+    // Shift the timestamps so the drive ends now (spacing between points is kept)
+    if (points.every((p) => p.time)) {
+      const shift = Date.now() - Math.max(...points.map((p) => Date.parse(p.time)));
+      points.forEach((p) => { p.time = new Date(Date.parse(p.time) + shift).toISOString(); });
+    }
+    await importPoints(points, 'demo route');
+  }
+
+  // ---- Download ----
+  function fileStamp() {
+    const d = new Date(), p = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}`;
+  }
+
+  function downloadJSON(filename, data) {
+    const blob = new Blob([JSON.stringify(data, null, 2) + '\n'], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  function downloadView() {
+    if (!fullPointsData.length) { showToast('Nothing to download', 'There are no points on screen.', 'info'); return; }
+    const points = fullPointsData.map((p) => ({ latitude: p.lat, longitude: p.lng, time: p.time }));
+    downloadJSON(`localtracker-${dayView ? dayView.day : 'live'}-${fileStamp()}.json`, points);
+    showToast('Download started', `${points.length.toLocaleString()} points (${dayView ? dayView.label : 'live view'}).`, 'success');
+  }
+
+  async function downloadAll() {
+    let r;
+    try {
+      r = await fetchPoints(`?after=0&limit=100000`);
+    } catch (err) {
+      showToast('Download failed', 'The server did not respond. Please try again.', 'alert');
+      return;
+    }
+    if (!r.pts.length) { showToast('Nothing to download', 'No points are saved yet.', 'info'); return; }
+    const points = r.pts.map((p) => ({ latitude: p.latitude, longitude: p.longitude, time: p.time }));
+    downloadJSON(`localtracker-all-history-${fileStamp()}.json`, points);
+    showToast('Download started', `${points.length.toLocaleString()} points${r.truncated ? ' (first 100,000 only)' : ''}.`, r.truncated ? 'warning' : 'success');
+  }
+
+  // ---- Menu, file picker, drag & drop ----
+  testMenuBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const n = fullPointsData.length;
+    $('downloadViewHint').textContent = n ? `${n.toLocaleString()} points · ${dayView ? dayView.label : 'Live'}` : 'No points on screen';
+    testMenu.querySelectorAll('[data-test]').forEach((b) => {
+      b.disabled = toolMode === 'import' && !b.dataset.test.startsWith('download');
+    });
+    toggleMenu(testMenuBtn, testMenu);
+  });
+
+  testMenu.addEventListener('click', (e) => {
+    const item = e.target.closest('[data-test]');
+    if (!item || item.disabled) return;
+    closeMenus();
+    closeMobileMenu();
+    switch (item.dataset.test) {
+      case 'click': startAddMode(); break;
+      case 'manual': openEntry(); break;
+      case 'upload': fileInput.value = ''; fileInput.click(); break;
+      case 'demo': loadDemoRoute(); break;
+      case 'download-view': downloadView(); break;
+      case 'download-all': downloadAll(); break;
+    }
+  });
+
+  fileInput.addEventListener('change', () => { if (fileInput.files.length) importFiles(fileInput.files); });
+
+  const hasFiles = (e) => !!e.dataTransfer && [...e.dataTransfer.types].includes('Files');
+  let dragDepth = 0;
+  mapWrap.addEventListener('dragenter', (e) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    dragDepth++;
+    dropOverlay.hidden = false;
+  });
+  mapWrap.addEventListener('dragover', (e) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  });
+  mapWrap.addEventListener('dragleave', (e) => {
+    if (!hasFiles(e)) return;
+    if (--dragDepth <= 0) { dragDepth = 0; dropOverlay.hidden = true; }
+  });
+  mapWrap.addEventListener('drop', (e) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    dragDepth = 0;
+    dropOverlay.hidden = true;
+    importFiles(e.dataTransfer.files);
+  });
+  // A file dropped anywhere else must not make the browser navigate away from the dashboard
+  window.addEventListener('dragover', (e) => { if (hasFiles(e)) e.preventDefault(); });
+  window.addEventListener('drop', (e) => { if (hasFiles(e)) e.preventDefault(); });
+
+  // =========================================================
+  // Clear history
+  // =========================================================
+  $('clearHistoryBtn').addEventListener('click', async () => {
+    closeMobileMenu();
+    const ok = await confirmDialog({
+      title: 'Clear tracking history?',
+      message: 'This permanently deletes all recorded points from the server, including every saved day. This can\'t be undone.',
+      confirmLabel: 'Delete history',
+      iconName: 'trash'
+    });
+    if (!ok) return;
+    try {
+      const res = await fetch(ENDPOINTS.locations, { method: 'DELETE' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    } catch (e) {
+      showToast('Could not clear history', 'The server did not respond. Please try again.', 'alert');
+      return;
+    }
+    dataGeneration++;
+    stopReplay();
+    resetPoints();
+    dayView = null;
+    liveEpoch = null;          // server has a new data epoch; reload on next poll
+    liveLastId = 0;
+    liveLatest = null;
+    updateHistoryBtn();
+    viewIndex = null;
+    replayDone = false;
+    lastWasInside = true;
+    breachSince = null;
+    setConn(liveConnState());
+    evaluateZone();
+    renderView();
+    setFollow(true);
+    tick();
+    showToast('History cleared', 'All tracking points were deleted.', 'success');
+  });
+
+  // =========================================================
+  // Polling — the timer is only rescheduled here; geofence is loaded once at startup
+  // =========================================================
+  let pollTimer = null, polling = false, pollAgain = false;
+  async function pollLoop() {
+    clearTimeout(pollTimer);
+    polling = true;
+    try { await fetchAndUpdate(); }
+    finally {
+      polling = false;
+      pollTimer = setTimeout(pollLoop, pollAgain ? 0 : Number(pollSelect.value) || 2000);
+      pollAgain = false;
+    }
+  }
+  // Poll now; if a poll is in flight, run another as soon as it finishes
+  function kickPoll() { if (polling) pollAgain = true; else pollLoop(); }
+  pollSelect.addEventListener('change', kickPoll);
+
+  // =========================================================
+  // Boot
+  // =========================================================
+  setConn('connecting');
+  renderView();
+  tick();
+  setInterval(tick, 1000);
+
+  (async function start() {
+    await loadGeofence();
+    await pollLoop();   // first poll loads live data in the background ("Last fix", geofence state)
+    if (await openDemoView()) return;   // preselect the demo day in History
+    if (geofencePolygon && !fullPointsData.length) {
+      try { map.fitBounds(geofencePolygon.getBounds(), { padding: [60, 60], animate: false }); } catch (e) {}
+    }
+  })();
+})();
+</script>
+</body>
+</html>
