@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LocalTracker · Live Asset Monitor</title>
+  <title>DURDRISHTI</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232563eb'/%3E%3Cpath d='M16 6l7 19-7-4-7 4z' fill='white'/%3E%3C/svg%3E">
 
   <!-- Apply saved theme before first paint (avoids a light/dark flash) -->
@@ -1036,8 +1036,8 @@
     <div class="brand">
       <div class="brand-mark"><svg class="icon"><use href="#i-logo"/></svg></div>
       <div class="brand-text">
-        <strong>LocalTracker</strong>
-        <span>Live Asset Monitor</span>
+        <h2>DURDRISHTI</h2>
+       <!-- <span>Control Beyond Coordinates</span> -->
       </div>
     </div>
 
@@ -1104,14 +1104,14 @@
       </button>
       <div class="menu" id="testMenu" role="menu">
         <div class="menu-title">Add points</div>
-        <button class="menu-item" role="menuitem" data-test="click">
+        <!-- <button class="menu-item" role="menuitem" data-test="click">
           <svg class="icon"><use href="#i-pointer"/></svg>
           <span>Add by clicking the map<small>Each click sends a point, like the device</small></span>
         </button>
         <button class="menu-item" role="menuitem" data-test="manual">
           <svg class="icon"><use href="#i-keyboard"/></svg>
           <span>Enter coordinates…<small>Latitude, longitude and optional time</small></span>
-        </button>
+        </button> -->
         <div class="menu-sep"></div>
         <div class="menu-title">Import</div>
         <button class="menu-item" role="menuitem" data-test="upload">
@@ -1237,7 +1237,7 @@
     <div class="toasts" id="toast-container" aria-live="polite"></div>
 
     <div class="drop-overlay" id="dropOverlay" hidden>
-      <div class="drop-card"><svg class="icon"><use href="#i-upload"/></svg><strong>Drop JSON files to import</strong><span>Points are saved on the server and appear in History</span></div>
+      <div class="drop-card"><svg class="icon"><use href="#i-upload"/></svg><strong>Drop JSON files to import</strong><span>JSON imports are kept in this browser’s History only</span></div>
     </div>
 
     <button id="sidebarToggleBtn" class="sidebar-toggle" aria-controls="sidebar" aria-expanded="true" aria-label="Hide track log" title="Hide track log">
@@ -1581,6 +1581,9 @@
   let liveLastId = 0;        // newest point id we have; polls ask only for ?after=<id>
   let liveLatest = null;     // newest live point (for "Last fix"), kept while viewing a saved day
   let dayView = null;        // { day, label, from, to, count } while viewing a saved day, else null
+  // Signatures for JSON imports kept in this browser's History archive. They also let us hide
+  // matching points from older imports that were previously POSTed to the live endpoint.
+  let importedPointSignatures = new Set();
   let toolMode = null;       // Test data: 'add' (click-to-add) | 'import' (sending a file) | null
   let activeModalClose = null;
 
@@ -2745,26 +2748,54 @@
     if (selectedIdx !== null) { selectedIdx -= extra; if (selectedIdx < 0) selectedIdx = null; }
   }
 
-  // Network part only — nothing on screen changes until applyLiveUpdate()
+  function pointSignature(raw) {
+    const lat = Number(raw?.latitude ?? raw?.lat);
+    const lng = Number(raw?.longitude ?? raw?.lng ?? raw?.lon);
+    const ts = raw?.time != null ? parseTime(raw.time) : null;
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || ts === null) return null;
+    return `${lat.toFixed(7)}|${lng.toFixed(7)}|${ts}`;
+  }
+
+  function isImportedArchivePoint(raw) {
+    const signature = pointSignature(raw);
+    return signature !== null && importedPointSignatures.has(signature);
+  }
+
+  // Network part only — nothing on screen changes until applyLiveUpdate().
+  // If the newest server records are matches for previously imported JSON files, fetch a wider
+  // recent window so those archived records do not push actual device points out of Live.
+  async function fetchLiveWindow() {
+    const recent = await fetchPoints(`?limit=${LIVE_WINDOW}`);
+    if (!importedPointSignatures.size || !recent.pts.some(isImportedArchivePoint)) return recent;
+    const wider = await fetchPoints('?limit=100000');
+    return {
+      ...wider,
+      pts: wider.pts.filter((p) => !isImportedArchivePoint(p)).slice(-LIVE_WINDOW)
+    };
+  }
+
   async function fetchLiveUpdate() {
     if (liveEpoch !== null) {
       const r = await fetchPoints(`?after=${liveLastId}`);
       if (r.epoch === liveEpoch) return { reset: false, r };
     }
-    return { reset: true, r: await fetchPoints(`?limit=${LIVE_WINDOW}`) };
+    return { reset: true, r: await fetchLiveWindow() };
   }
 
-  // Returns true if the live points changed
+  // Returns true if the displayed live points changed. Keep the server cursor advancing even
+  // when every newly received point belongs to an imported archive.
   function applyLiveUpdate({ reset, r }) {
     if (reset) {
       resetPoints();
-      r.pts.forEach(appendPoint);
+      r.pts.filter((p) => !isImportedArchivePoint(p)).forEach(appendPoint);
       liveEpoch = r.epoch;
       liveLastId = r.lastId;
     } else {
       if (!r.pts.length) return false;
-      r.pts.forEach(appendPoint);
       liveLastId = r.pts[r.pts.length - 1].id;
+      const visible = r.pts.filter((p) => !isImportedArchivePoint(p));
+      if (!visible.length) return false;
+      visible.forEach(appendPoint);
       trimLiveWindow();
     }
     liveLatest = fullPointsData[fullPointsData.length - 1] || null;
@@ -2805,7 +2836,8 @@
   }
 
   // =========================================================
-  // History — every point is kept on the server; pick a saved day to view or replay it
+  // History — server-saved device points plus JSON imports kept in this browser's archive.
+  // Uploaded JSON is deliberately not POSTed to /api/location, so it cannot become live data.
   // =========================================================
   function dayLabel(key) {
     const [y, m, d] = key.split('-').map(Number);
@@ -2820,6 +2852,172 @@
     });
   }
 
+  function dayKeyForTime(value) {
+    const ts = typeof value === 'number' ? value : parseTime(value);
+    const d = new Date(ts === null || !Number.isFinite(ts) ? Date.now() : ts);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
+  function dayBounds(day) {
+    const [y, m, d] = day.split('-').map(Number);
+    return { from: new Date(y, m - 1, d).getTime(), to: new Date(y, m - 1, d + 1).getTime() };
+  }
+
+  // IndexedDB is used instead of localStorage so bigger JSON files are not limited to ~5 MB.
+  const IMPORT_DB_NAME = 'localtracker-history-imports';
+  const IMPORT_DB_VERSION = 1;
+  let importedDbPromise = null;
+
+  function openImportedHistoryDb() {
+    if (!('indexedDB' in window)) return Promise.reject(new Error('This browser does not support local History storage.'));
+    if (!importedDbPromise) {
+      importedDbPromise = new Promise((resolve, reject) => {
+        const req = indexedDB.open(IMPORT_DB_NAME, IMPORT_DB_VERSION);
+        req.onupgradeneeded = () => {
+          const db = req.result;
+          if (!db.objectStoreNames.contains('points')) {
+            const store = db.createObjectStore('points', { keyPath: 'id', autoIncrement: true });
+            store.createIndex('day', 'day', { unique: false });
+          }
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error || new Error('Could not open local History storage.'));
+        req.onblocked = () => reject(new Error('Local History storage is blocked by another tab.'));
+      });
+    }
+    return importedDbPromise;
+  }
+
+  async function saveImportedHistory(points, label) {
+    const db = await openImportedHistoryDb();
+    const fallbackTime = new Date().toISOString();
+    const records = points.map((p) => {
+      const parsed = p.time != null ? parseTime(p.time) : null;
+      const time = parsed === null ? fallbackTime : new Date(parsed).toISOString();
+      return {
+        latitude: Number(p.latitude), longitude: Number(p.longitude), time,
+        day: dayKeyForTime(time), sourceName: label, importedAt: fallbackTime
+      };
+    });
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction('points', 'readwrite');
+      const store = tx.objectStore('points');
+      records.forEach((record) => store.add(record));
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error || new Error('Could not save the imported points.'));
+      tx.onabort = () => reject(tx.error || new Error('Import was cancelled by the browser.'));
+    });
+    records.forEach((record) => {
+      const signature = pointSignature(record);
+      if (signature) importedPointSignatures.add(signature);
+    });
+    return records;
+  }
+
+  async function loadImportedPointSignatures() {
+    const db = await openImportedHistoryDb();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction('points', 'readonly');
+      const req = tx.objectStore('points').openCursor();
+      req.onsuccess = () => {
+        const cursor = req.result;
+        if (!cursor) { resolve(); return; }
+        const signature = pointSignature(cursor.value);
+        if (signature) importedPointSignatures.add(signature);
+        cursor.continue();
+      };
+      req.onerror = () => reject(req.error || new Error('Could not read imported History points.'));
+    });
+  }
+
+  async function getImportedHistoryDays() {
+    const db = await openImportedHistoryDb();
+    return new Promise((resolve, reject) => {
+      const days = new Map();
+      const tx = db.transaction('points', 'readonly');
+      const req = tx.objectStore('points').openCursor();
+      req.onsuccess = () => {
+        const cursor = req.result;
+        if (!cursor) {
+          resolve([...days.values()].sort((a, b) => b.day.localeCompare(a.day)));
+          return;
+        }
+        const p = cursor.value;
+        const ts = parseTime(p.time) ?? Date.now();
+        let entry = days.get(p.day);
+        if (!entry) {
+          entry = { day: p.day, count: 0, first: p.time, last: p.time };
+          days.set(p.day, entry);
+        }
+        entry.count++;
+        if (ts < (parseTime(entry.first) ?? ts)) entry.first = p.time;
+        if (ts > (parseTime(entry.last) ?? ts)) entry.last = p.time;
+        cursor.continue();
+      };
+      req.onerror = () => reject(req.error || new Error('Could not read imported History dates.'));
+    });
+  }
+
+  async function getImportedPointsForDay(day) {
+    const db = await openImportedHistoryDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('points', 'readonly');
+      const req = tx.objectStore('points').index('day').getAll(day);
+      req.onsuccess = () => resolve(req.result.map((p) => ({
+        latitude: p.latitude, longitude: p.longitude, time: p.time
+      })));
+      req.onerror = () => reject(req.error || new Error('Could not load imported History points.'));
+    });
+  }
+
+  function mergeHistoryDays(serverDays, localDays) {
+    const byDay = new Map();
+    for (const d of serverDays || []) {
+      const bounds = dayBounds(d.day);
+      byDay.set(d.day, {
+        ...d, key: `day:${d.day}`, from: Number.isFinite(Number(d.from)) ? Number(d.from) : bounds.from,
+        to: Number.isFinite(Number(d.to)) ? Number(d.to) : bounds.to,
+        hasServer: true, hasImported: false
+      });
+    }
+    for (const local of localDays || []) {
+      const existing = byDay.get(local.day);
+      if (existing) {
+        existing.count += local.count;
+        if ((parseTime(local.first) ?? Infinity) < (parseTime(existing.first) ?? Infinity)) existing.first = local.first;
+        if ((parseTime(local.last) ?? -Infinity) > (parseTime(existing.last) ?? -Infinity)) existing.last = local.last;
+        existing.hasImported = true;
+      } else {
+        byDay.set(local.day, { ...local, ...dayBounds(local.day), key: `day:${local.day}`, hasServer: false, hasImported: true });
+      }
+    }
+    return [...byDay.values()].sort((a, b) => b.day.localeCompare(a.day));
+  }
+
+  async function refreshHistoryDays() {
+    let serverDays = [], serverError = false, localDays = [];
+    try {
+      const res = await fetch(`${ENDPOINTS.locations}/days`, { cache: 'no-store' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      serverDays = await res.json();
+    } catch (err) { serverError = true; }
+    try { localDays = await getImportedHistoryDays(); }
+    catch (err) { console.warn('Could not load browser History archive:', err); }
+    historyDays = mergeHistoryDays(serverDays, localDays);
+    return { days: historyDays, serverError };
+  }
+
+  function uniqueHistoryPoints(points) {
+    const seen = new Set();
+    return points.filter((p) => {
+      const sig = pointSignature(p);
+      const key = sig || `${Number(p.latitude)}|${Number(p.longitude)}|${String(p.time ?? '')}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }).sort((a, b) => (parseTime(a.time) ?? 0) - (parseTime(b.time) ?? 0));
+  }
+
   function updateHistoryBtn() {
     historyBtnLabel.textContent = dayView ? dayView.label : 'Live';
     historyBtn.classList.toggle('is-active', !!dayView);
@@ -2830,8 +3028,8 @@
       <button class="menu-item${dayView ? '' : ' selected'}" role="menuitemradio" aria-checked="${!dayView}" data-history="live">
         ${icon('radio')}<span>Live<small>Latest ${LIVE_WINDOW.toLocaleString()} points, updates automatically</small></span>${icon('check', 'check')}
       </button>`;
-    // Saved days from the server + the built-in demo day (from the project file), newest first
-    const entries = (days || []).map((d, i) => ({ ...d, key: String(i) }));
+    // Merge server history dates with imported dates saved in this browser, newest first.
+    const entries = (days || []).map((d) => ({ ...d, key: d.key || `day:${d.day}` }));
     if (demoDay) entries.push({ ...demoDay, key: 'demo' });
     entries.sort((a, b) => b.day.localeCompare(a.day));
     let list = entries.map((d) => {
@@ -2841,7 +3039,7 @@
           ${icon('calendar')}<span>${escapeHtml(dayLabel(d.day))}<small>${d.count.toLocaleString()} ${d.count === 1 ? 'point' : 'points'} · ${escapeHtml(fmtTime(d.first, false))}–${escapeHtml(fmtTime(d.last, false))}</small></span>${icon('check', 'check')}
         </button>`;
     }).join('');
-    if (error) list += '<div class="menu-note">Could not load saved days.</div>';
+    if (error) list += '<div class="menu-note">Could not load server-saved days. Browser imports are shown when available.</div>';
     else if (!days) list += '<div class="menu-note">Loading…</div>';
     else if (!entries.length) list = '<div class="menu-note">No saved history yet.</div>';
     historyMenu.innerHTML = `
@@ -2859,14 +3057,8 @@
     renderHistoryMenu(null);
     toggleMenu(historyBtn, historyMenu);
     if (!opening) return;
-    try {
-      const res = await fetch(`${ENDPOINTS.locations}/days`, { cache: 'no-store' });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      historyDays = await res.json();
-      renderHistoryMenu(historyDays);
-    } catch (err) {
-      renderHistoryMenu(null, true);
-    }
+    const result = await refreshHistoryDays();
+    renderHistoryMenu(result.days, result.serverError);
   });
   historyMenu.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -2875,20 +3067,33 @@
     closeMenus();
     if (item.dataset.history === 'live') { if (dayView) returnToLive(); return; }
     if (item.dataset.history === 'demo') { openDemoView(); return; }
-    const d = historyDays[Number(item.dataset.history)];
+    const d = historyDays.find((x) => x.key === item.dataset.history);
     if (d) openDay(d);
   });
 
   async function openDay(d) {
-    let r;
+    let serverPoints = [], serverResult = null, serverError = null, importedPoints = [];
     try {
-      r = await fetchPoints(`?from=${d.from}&to=${d.to}`);
-    } catch (err) {
+      serverResult = await fetchPoints(`?from=${d.from}&to=${d.to}`);
+      serverPoints = serverResult.pts;
+    } catch (err) { serverError = err; }
+    if (d.hasImported) {
+      try { importedPoints = await getImportedPointsForDay(d.day); }
+      catch (err) {
+        if (!serverPoints.length) {
+          showToast('Could not load imported History', 'Browser storage could not return this date. Please try again.', 'alert');
+          return;
+        }
+      }
+    }
+    if (serverError && !d.hasImported) {
       showToast('Could not load history', 'The server did not respond. Please try again.', 'alert');
       return;
     }
-    showSavedView({ ...d, label: dayLabel(d.day) }, r.pts);
-    if (r.truncated) showToast('Showing part of this day', `Only the first ${r.pts.length.toLocaleString()} points were loaded.`, 'warning');
+    const points = uniqueHistoryPoints([...serverPoints, ...importedPoints]);
+    showSavedView({ ...d, label: dayLabel(d.day) }, points);
+    if (serverResult?.truncated) showToast('Showing part of this day', `Only the first ${serverPoints.length.toLocaleString()} server points were loaded.`, 'warning');
+    else if (serverError && d.hasImported) showToast('Showing browser History only', 'Server history could not be reached; local imported points are still available.', 'warning');
   }
 
   // Put a fixed set of points on screen (a saved day or the demo route); live polling pauses
@@ -2910,8 +3115,7 @@
   }
 
   // The demo day (Genpact Sarhol ⇄ Sikandarpur Metro) is read from public/demo/demo-route.json —
-  // not from the database — so it is always listed in History under its own date (e.g. "Thu, 1 Oct"),
-  // after a server restart, on Render and after "Clear track". It is also the view shown on page load.
+  // not from the database — so it can be opened in History independently of server data.
   let demoDay = null;   // { day, count, first, last, points }
 
   async function getDemoDay() {
@@ -2962,9 +3166,8 @@
   }
 
   // =========================================================
-  // Test data — add points by clicking or typing, import JSON files or the demo route, download JSON.
-  // Everything added is POSTed to /api/location exactly like the ESP32, so it is stored on the
-  // server and shows up in Live and in History.
+  // Test data — click/manual entries and the demo-route action POST to /api/location. JSON file
+  // uploads use the separate browser-local History archive so they never become live device data.
   // =========================================================
   const testMenuBtn = $('testMenuBtn'), testMenu = $('testMenu'), fileInput = $('fileInput');
   const toolBanner = $('toolBanner'), toolBannerIcon = $('toolBannerIcon'), toolBannerTitle = $('toolBannerTitle');
@@ -3371,12 +3574,46 @@
     const ok = await confirmDialog({
       title: `Import ${points.length.toLocaleString()} ${points.length === 1 ? 'point' : 'points'}?`,
       message: `From ${label}${skipped ? ` — ${skipped} invalid ${skipped === 1 ? 'entry' : 'entries'} skipped` : ''}. ` +
-        `They are saved on the server like device points and appear in Live and History${daySummary(points)}.`,
-      confirmLabel: 'Import',
+        `These points will be stored in this browser's History only and will not be sent to the live tracking endpoint${daySummary(points)}.`,
+      confirmLabel: 'Import to History',
       iconName: 'upload',
       tone: 'primary'
     });
-    if (ok) await importPoints(points, label);
+    if (ok) await archiveUploadedPoints(points, label);
+  }
+
+  async function archiveUploadedPoints(input, label) {
+    if (toolMode === 'import') { showToast('Import in progress', 'Wait for the current import to finish.', 'info'); return; }
+    stopAddMode();
+    cancelZoneMode();
+    const wasLive = !dayView && viewIndex === null;
+    toolMode = 'import';
+    try {
+      const records = await saveImportedHistory(input, label);
+      // Hide any matching records left in Live from imports made with an older version of the page.
+      if (wasLive) {
+        const before = fullPointsData.length;
+        fullPointsData = fullPointsData.filter((p) => !isImportedArchivePoint({ latitude: p.lat, longitude: p.lng, time: p.time }));
+        if (before !== fullPointsData.length) {
+          selectedIdx = null;
+          liveLatest = fullPointsData[fullPointsData.length - 1] || null;
+          renderView();
+          tick();
+        }
+      }
+      liveEpoch = null;
+      const result = await refreshHistoryDays();
+      if (historyMenu.classList.contains('open')) renderHistoryMenu(result.days, result.serverError);
+      const latestTime = Math.max(...records.map((p) => parseTime(p.time) ?? 0));
+      const latestDay = dayKeyForTime(latestTime);
+      const targetDay = historyDays.find((d) => d.day === latestDay);
+      if (targetDay) await openDay(targetDay);
+      showToast('Import complete', `${records.length.toLocaleString()} points saved to History only. Live tracking data was not updated.`, 'success');
+    } catch (err) {
+      showToast('Import failed', err?.message || 'Could not save points to browser History.', 'alert');
+    } finally {
+      toolMode = null;
+    }
   }
 
   let importCancelled = false;
@@ -3632,9 +3869,11 @@
   setInterval(tick, 1000);
 
   (async function start() {
+    try { await loadImportedPointSignatures(); }
+    catch (err) { console.warn('Imported History archive could not be loaded:', err); }
     await loadGeofence();
-    await pollLoop();   // first poll loads live data in the background ("Last fix", geofence state)
-    if (await openDemoView()) return;   // preselect the demo day in History
+    await pollLoop();   // open in Live by default; load latest device data in the background
+    // History dates (including imported JSON) open only when selected from the History menu.
     if (geofencePolygon && !fullPointsData.length) {
       try { map.fitBounds(geofencePolygon.getBounds(), { padding: [60, 60], animate: false }); } catch (e) {}
     }
